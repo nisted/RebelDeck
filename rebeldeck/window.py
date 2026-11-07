@@ -58,12 +58,12 @@ def main(argv):
         geo = d.get("window") or {}
         w, h = default_size(d["columns"], d["rows"])
         url = f"{base}/deck/{d['slug']}?window=1"
-        title = d["name"]
+        title = f"{d['name']} · RebelDeck"
     else:
         geo = d.get("breakout_windows", {}).get(str(key)) or {}
         w, h = 110, 122
         url = f"{base}/deck/{d['slug']}?window=1&key={key}"
-        title = f"{d['name']} · key {key}"
+        title = f"{d['name']} · key {key} · RebelDeck"
     w, h = geo.get("w", w), geo.get("h", h)
     see_through = d.get("transparency", 0) > 0
 
@@ -102,6 +102,36 @@ def main(argv):
     def later(fn, *args):
         threading.Thread(target=fn, args=args, daemon=True).start()
 
+    # On Windows, float and size go straight to Windows (SetWindowPos with
+    # SWP_ASYNCWINDOWPOS: Windows queues the change and never waits for the
+    # window), not through pywebview: Float through pywebview froze windows.
+    hwnd = [None]
+
+    def find_hwnd():
+        if hwnd[0] is None:
+            import ctypes
+            hwnd[0] = ctypes.windll.user32.FindWindowW(None, title) or None
+            log.info("%s: window handle %s", title, hwnd[0])
+        return hwnd[0]
+
+    def win_set_pos(after, w=0, h=0, flags=0):
+        import ctypes
+        from ctypes import wintypes
+        h_ = find_hwnd()
+        if not h_:
+            return False
+        u = ctypes.windll.user32
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        ok = u.SetWindowPos(h_, after, 0, 0, w, h, flags | 0x0002 | 0x0010 | 0x4000)   # NOMOVE, NOACTIVATE, ASYNC
+        return bool(ok)
+
+    def dpi_scale():
+        try:
+            import ctypes
+            return ctypes.windll.user32.GetDpiForWindow(find_hwnd()) / 96 or 1
+        except Exception:
+            return 1
+
     def apply_size():
         while True:
             with size_lock:
@@ -110,12 +140,24 @@ def main(argv):
                     pending["busy"] = False
                     return
             try:
+                if WIN:
+                    k = dpi_scale()
+                    if win_set_pos(None, round(size[0] * k), round(size[1] * k), 0x0004 | 0x0200):   # NOZORDER, NOOWNERZORDER
+                        continue
                 window.resize(*size)
             except Exception as e:
                 log.info("resize: %s", e)
 
     def set_on_top(on):
+        log.info("%s: float %s", title, "on" if on else "off")
         try:
+            if WIN:
+                import ctypes
+                from ctypes import wintypes
+                after = wintypes.HWND(-1 if on else -2)                 # HWND_TOPMOST / HWND_NOTOPMOST
+                if win_set_pos(after, flags=0x0001):                     # NOSIZE
+                    return
+                log.info("%s: no window handle; float via pywebview", title)
             window.on_top = bool(on)
         except Exception as e:
             log.info("float: %s", e)
@@ -152,17 +194,18 @@ def main(argv):
         def front(self):
             def go():
                 try:
+                    log.info("%s: identify", title)
                     window.show()
                     window.restore()
-                    if not window.on_top:
-                        window.on_top = True
-                        time.sleep(3)
-                        window.on_top = bool(_call(base, "GET", f"/api/decks/{deck_id}/state")["style"]["float"])
+                    set_on_top(True)
+                    time.sleep(3)
+                    set_on_top(bool(_call(base, "GET", f"/api/decks/{deck_id}/state")["style"]["float"]))
                 except Exception as e:
                     log.info("front: %s", e)
             later(go)
 
         def close(self):
+            log.info("%s: closing (asked by the page)", title)
             later(window.destroy)
 
     window = webview.create_window(
@@ -191,7 +234,9 @@ def main(argv):
     window.events.moved += moved
     window.events.resized += resized
     window.events.shown += started
+    log.info("%s: opening", title)
     webview.start(private_mode=True)
+    log.info("%s: closed", title)
     if save_timer[0]:
         save_timer[0].cancel()
     save_geometry()

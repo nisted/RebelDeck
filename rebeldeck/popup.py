@@ -316,7 +316,7 @@ class Popup:
         self.qr_shown, self.qr_for = True, key
         self.place()
 
-    def draw_decks(self, decks, local):
+    def draw_decks(self, decks, local, windows=None):
         tk, z = self.tk, self.z
         for w in self.decks.winfo_children():
             w.destroy()
@@ -335,7 +335,8 @@ class Popup:
             self.thumb(row, d).pack(side="right", padx=(z(8), 0))
             if local:
                 sw = Switch(tk, row, z, (lambda i: lambda on: self.put(f"/api/decks/{i}", {"showing": on}))(d["id"]))
-                sw.set(d["showing"])
+                # the window's real state, not just the setting (it may still be opening, or failed)
+                sw.set(windows.get(d["id"], False) if windows is not None else d["showing"])
                 sw.pack(side="right")
 
     def poll_once(self):
@@ -375,10 +376,12 @@ class Popup:
         elif self.note_shown:
             self.note.pack_forget()
             self.note_shown = False
-        sig = json.dumps([(d["id"], d["name"], d["columns"], d["rows"], d["showing"], d["status"]) for d in st.get("decks", [])])
+        windows = st.get("windows")
+        sig = json.dumps([[(d["id"], d["name"], d["columns"], d["rows"], d["showing"], d["status"]) for d in st.get("decks", [])],
+                          windows])
         if sig != self.deck_sig:
             self.deck_sig = sig
-            self.draw_decks(st.get("decks", []), st.get("local", True))
+            self.draw_decks(st.get("decks", []), st.get("local", True), windows)
             self.place()
         try:
             self.login.set(bool(self.call("GET", "/api/settings").get("start_at_login")))

@@ -267,8 +267,8 @@ def make_server(manager, app=None, rigs=None):
                         f["host"] == "127.0.0.1" and ("localhost", f["port"]) in known)
                 return self.send(200, found)
             if path == "/api/presets":
-                return self.send(200, [{"name": n, "columns": c, "rows": r, "key_types": lay.get("key_types", {}),
-                                        "strip_rows": lay.get("strip_rows", [])} for n, c, r, lay in settings.PRESETS])
+                return self.send(200, [{"name": n, "columns": c, "rows": r, "key_types": lay.get("key_types", {})}
+                                       for n, c, r, lay in settings.PRESETS])
             if path == "/api/decks":
                 return self.send(200, manager.deck_list())
             if path == "/api/servers":

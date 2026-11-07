@@ -44,7 +44,7 @@ body.win #wrap{padding:var(--pad)}
 .key span{position:absolute;inset:6%;display:flex;align-items:center;justify-content:center;text-align:center;
   white-space:pre-wrap;word-break:break-word;font-size:calc(var(--k)*.16);pointer-events:none}
 .key.down{transform:scale(.93);filter:brightness(1.35)}
-.key.strip{height:100%;border-radius:4%/8%}
+.key.strip{height:calc(var(--k) / var(--ratio, 2));align-self:center;border-radius:4%/8%}
 .key.strip span{font-size:calc(var(--k)*.12)}
 .key.gap{visibility:hidden;pointer-events:none}
 .key.off{cursor:default}
@@ -120,13 +120,15 @@ function dims() {
           head: showHead ? (parseFloat(getComputedStyle(document.body).getPropertyValue("--head")) || 26) : 0};
 }
 function shape() { return single !== null ? [1, 1] : [cols, rows]; }
-// rows' heights in key sizes: 1 for a normal row, 1/ratio for a strip row
+// rows' heights in key sizes: a row of only strip buttons (and gaps) is short;
+// any other row is a full key high (its strip buttons sit in the middle)
 function rowUnits() {
-  if (single !== null) {
-    const strip = (style.strip_rows || []).includes(Math.floor(single / cols));
-    return [strip ? 1 / (style.strip_ratio || 2) : 1];
-  }
-  return [...Array(rows).keys()].map(r => (style.strip_rows || []).includes(r) ? 1 / (style.strip_ratio || 2) : 1);
+  const short = 1 / (style.strip_ratio || 2);
+  if (single !== null) return [kind(single) === "strip" ? short : 1];
+  return [...Array(rows).keys()].map(r => {
+    const ts = [...Array(cols).keys()].map(c => kind(r * cols + c)).filter(t => t !== "gap");
+    return ts.length && ts.every(t => t === "strip") ? short : 1;
+  });
 }
 function fit() {
   const {pad, gap, head} = dims(), [c] = shape(), units = rowUnits(), r = units.length;
@@ -137,6 +139,7 @@ function fit() {
   deck.style.setProperty("--k", Math.max(16, k) + "px");
   deck.style.gridTemplateColumns = `repeat(${c}, var(--k))`;
   deck.style.gridTemplateRows = units.map(u => `calc(var(--k) * ${u})`).join(" ");
+  deck.style.setProperty("--ratio", style.strip_ratio || 2);
 }
 // the window's height for a given width, so the deck fills it with no letterbox
 function heightFor(w) {
@@ -179,7 +182,7 @@ function applyStyle() {
     if (!el) continue;
     const t = kind(i), out = single === null && style.breakout.includes(i);
     el.classList.toggle("gap", t === "gap");
-    el.classList.toggle("strip", (style.strip_rows || []).includes(Math.floor(i / cols)));
+    el.classList.toggle("strip", t === "strip");
     el.classList.toggle("rotary", t === "rotary");
     el.classList.toggle("fader", t === "fader");
     el.classList.toggle("out", out);
@@ -228,9 +231,9 @@ function showStatus() {
 
 function state(s) {
   if (s.gone) { why.textContent = "This deck's been removed. Off you pop."; lost.classList.add("on"); return; }
-  const shapeWas = JSON.stringify([style.strip_rows, style.strip_ratio]);
+  const shapeWas = JSON.stringify([style.key_types, style.strip_ratio]);
   const rebuild = s.cols !== cols || s.rows !== rows || !keys.length ||
-    shapeWas !== JSON.stringify([(s.style || {}).strip_rows, (s.style || {}).strip_ratio]);
+    shapeWas !== JSON.stringify([(s.style || {}).key_types, (s.style || {}).strip_ratio]);
   cols = s.cols; rows = s.rows;
   style = Object.assign(style, s.style || {});
   if (rebuild) build(); else applyStyle();

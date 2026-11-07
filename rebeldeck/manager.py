@@ -30,8 +30,8 @@ RESTART_APP = ("web_port", "web_network", "discovery_port")
 # deck settings anyone with the GUI may change, and which of them need the deck
 # registering with Companion again
 DECK_KEYS = ("name", "columns", "rows", "showing", "own_server", "server", "click_mode", "blocked",
-             "key_types", "strip_rows", "strip_ratio", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
-REREGISTER = ("name", "columns", "rows", "key_types", "strip_rows", "strip_ratio", "picture_px")
+             "key_types", "strip_ratio", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
+REREGISTER = ("name", "columns", "rows", "key_types", "strip_ratio", "picture_px")
 
 PICTURE_STEPS = (72, 96, 120, 144, 196, 240, 288)
 

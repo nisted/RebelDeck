@@ -76,7 +76,7 @@ class Deck:
         self._api = (0, 0, 0)
         self.faders = {int(k): 0 for k, t in deck.get("key_types", {}).items() if t == "fader"}
         self.gaps = {int(k) for k, t in deck.get("key_types", {}).items() if t == "gap"}
-        self.strips = {int(r) for r in deck.get("strip_rows", [])}
+        self.strips = {int(k) for k, t in deck.get("key_types", {}).items() if t == "strip"}
         self.ratio = float(deck.get("strip_ratio", 2) or 2)
         self._advanced = False              # Companion's free layout (strips, gaps), from API 1.9
         self._nonsquare = False             # wide pictures, from API 1.11 (Companion 5)
@@ -148,7 +148,7 @@ class Deck:
                 "blocked": d.get("blocked", []), "key_types": d.get("key_types", {}),
                 "breakout": d.get("breakout", []), "float": d.get("float", True),
                 "movable": d.get("movable", True), "transparency": d.get("transparency", 0),
-                "strip_rows": d.get("strip_rows", []), "strip_ratio": d.get("strip_ratio", 2),
+                "strip_ratio": d.get("strip_ratio", 2),
                 "colour": d.get("colour", "#000000"), "faders": {str(k): v for k, v in self.faders.items()}}
 
     def key_json(self, i):
@@ -249,7 +249,7 @@ class Deck:
                     added = True
 
     def strip_px(self):
-        """(width, height) of a strip row's pictures."""
+        """(width, height) of a strip button's picture."""
         if not self._nonsquare:
             return self.picture_px, self.picture_px
         return self.picture_px, max(16, round(self.picture_px / self.ratio))
@@ -260,7 +260,7 @@ class Deck:
             f"SERIAL={quote('rebeldeck:' + self.id)}",
         ]
         # strips and gaps need Companion's free layout (API 1.9+): every key a
-        # control at its row/column, gaps left out, strip rows with wide pictures
+        # control at its row/column, gaps left out, strip buttons with wide pictures
         self._advanced = bool(self.strips or self.gaps) and self._api >= (1, 9, 0)
         if self._advanced:
             px = self.picture_px
@@ -274,7 +274,7 @@ class Deck:
                     continue
                 r, c = divmod(k, self.cols)
                 ctl = {"row": r, "column": c}
-                if r in self.strips:
+                if k in self.strips:
                     ctl["stylePreset"] = "strip"
                 manifest["controls"][f"{r}/{c}"] = ctl
             parts.append("LAYOUT_MANIFEST=" + base64.b64encode(json.dumps(manifest).encode()).decode())
@@ -360,7 +360,7 @@ class Deck:
         if a.get("LOCATION"):
             k.location = a["LOCATION"]
         if "BITMAP" in a:
-            strip = self._advanced and (i // self.cols) in self.strips
+            strip = self._advanced and i in self.strips
             k.image = self._image(a["BITMAP"], self.strip_px() if strip else None)
         if "COLOR" in a:
             k.color = a["COLOR"]

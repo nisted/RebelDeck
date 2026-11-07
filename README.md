@@ -35,7 +35,7 @@ service for phones and tablets.
   **rotaries** (drag or scroll to turn, tap to push) or **faders** (Intech Grid style: turn steps plus a 0-127 surface
   variable `fader_N`; Companion moves them with `fader_N_set`); **break out** single keys into their own little
   floating windows.
-- **Strip rows** (wide, short buttons like a Stream Deck + touch strip) and **gaps**, using Companion's free layout
+- **Strip buttons** (wide, short, like a Stream Deck + touch strip segment; any button can be one) and **gaps**, using Companion's free layout
   (Companion 4.2+; wide pictures on Companion 5+). Presets for the **+** and **+ XL** match how Companion lays them out.
 - **Several Companions**: a list of servers with a default; any deck can use its own. **Find Companions** scans this
   computer and the local network for Companion's Satellite port.

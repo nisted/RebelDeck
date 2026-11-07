@@ -189,6 +189,7 @@ class Windows:
         except OSError as e:
             log.warning("couldn't open %s: %s", d["name"], e)
             return
+        log.info("opening the %s window%s", d["name"], f" (key {name.partition(':')[2]})" if ":" in name else "")
         with self.lock:
             self.procs[name] = p
         threading.Thread(target=self._watch, args=(name, p), daemon=True).start()
@@ -216,6 +217,7 @@ class Windows:
             if self.procs.get(name) is not p:
                 return              # closed by us
             self.procs.pop(name, None)
+        log.info("window %s ended by itself (exit %s)", name, p.returncode)
         if self.app.quitting:
             return
         deck_id, _, key = name.partition(":")
@@ -541,6 +543,7 @@ class App:
         if self.windows:
             self.m.on_windows = self.windows.set
             if self.m.cfg.get("open_windows_at_start", True):
+                log.info("reopening deck windows: %s", ", ".join(d["name"] for d in self.m.cfg["decks"] if d["showing"]) or "none")
                 for d in self.m.cfg["decks"]:
                     if d["showing"]:
                         self.windows.show(d["id"])

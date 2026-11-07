@@ -272,14 +272,16 @@ def run(png, caps, rotary_amount=False):
         # strip rows and gaps: Companion's free layout, wide pictures where Companion allows
         mine = lambda: [l for l in adds(fc) if second["device_id"] in l]
         n = len(mine())
-        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 4, "rows": 3, "strip_rows": [1], "strip_ratio": 2,
-                                                         "key_types": {"5": "gap", "8": "rotary"}})
+        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 4, "rows": 3, "strip_ratio": 2,
+                                                         "key_types": {"4": "strip", "6": "strip", "7": "strip",
+                                                                       "5": "gap", "8": "rotary", "1": "strip"}})
         assert wait(lambda: len(mine()) == n + 1)
         reg = mine()[-1]
         assert "LAYOUT_MANIFEST=" in reg and "KEYS_TOTAL" not in reg, reg
         man = json.loads(base64.b64decode(parse(reg)[1]["LAYOUT_MANIFEST"]))
         assert "1/1" not in man["controls"] and len(man["controls"]) == 11
         assert man["controls"]["1/0"]["stylePreset"] == "strip" and "stylePreset" not in man["controls"]["0/0"]
+        assert man["controls"]["0/1"]["stylePreset"] == "strip"            # one strip button in a normal row
         px = man["stylePresets"]["default"]["bitmap"]["w"]
         sh = px // 2 if caps else px        # wide pictures only where Companion says it can (NONSQUARE)
         assert man["stylePresets"]["strip"]["bitmap"] == {"w": px, "h": sh}
@@ -296,12 +298,14 @@ def run(png, caps, rotary_amount=False):
         assert call(base, "GET", "/api/decks")[1]["locations"][6] == "60/7/3"
         presets = {p["name"]: p for p in call(base, "GET", "/api/presets")}
         xl = presets["+ XL"]
-        assert (xl["columns"], xl["rows"], xl["strip_rows"]) == (9, 6, [4])
+        assert (xl["columns"], xl["rows"]) == (9, 6)
+        assert sorted(int(k) for k, v in xl["key_types"].items() if v == "strip") == [36, 38, 39, 41, 42, 44]
         assert sorted(int(k) for k, v in xl["key_types"].items() if v == "gap") == [37, 40, 43, 46, 49, 52]
         assert sum(v == "rotary" for v in xl["key_types"].values()) == 6
         plus = presets["+ (Plus)"]
-        assert (plus["columns"], plus["rows"], plus["strip_rows"]) == (4, 4, [2])
-        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 5, "rows": 3, "strip_rows": [], "key_types": {}})
+        assert (plus["columns"], plus["rows"]) == (4, 4)
+        assert sorted(int(k) for k, v in plus["key_types"].items() if v == "strip") == [8, 9, 10, 11]
+        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 5, "rows": 3, "key_types": {}})
         assert wait(lambda: "KEYS_TOTAL=15" in mine()[-1]) and "LAYOUT_MANIFEST" not in mine()[-1]
 
         # finding Companions: this one answers with its version
@@ -343,6 +347,11 @@ def test_old_settings_move_over():
     saved = json.load(open(settings.FILE))
     assert "columns" not in saved and "companion_host" not in saved and "key_px" not in saved
     assert saved["web_port"] == 9000 and saved["decks"][0]["device_id"] == "rebeldeck-abc12345"
+    # v0.4.0 strip rows become strip buttons (gaps stay gaps)
+    fresh_settings({"decks": [{"id": "a", "device_id": "x-a", "name": "P", "columns": 3, "rows": 2, "strip_rows": [1],
+                               "key_types": {"4": "gap"}}]})
+    d = settings.load()["decks"][0]
+    assert d["key_types"] == {"3": "strip", "4": "gap", "5": "strip"} and "strip_rows" not in d, d
     # repeated names get a number
     fresh_settings({"decks": [{"id": "a", "device_id": "x-a", "name": "Main"}, {"id": "b", "device_id": "x-b", "name": "main"}]})
     assert [d["name"] for d in settings.load()["decks"]] == ["Main", "main 2"]
