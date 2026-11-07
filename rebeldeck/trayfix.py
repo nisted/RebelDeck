@@ -5,10 +5,16 @@ file with no extension (tempfile.mktemp), deletes the previous one, and hands
 the taskbar that path as the icon's *name*. On BD-1 (Raspberry Pi OS, labwc +
 wf-panel-pi) the taskbar gave the icon a slot but drew nothing (7 Nov).
 
-Here each picture is saved once as a named .png in our own folder, and the
-taskbar gets the folder (IconThemePath) plus an icon name without a path, the
-way the StatusNotifierItem spec expects. Each distinct picture gets its own
-name, so a status change is a new name and the taskbar redraws.
+Here each picture is saved once as a named .png and the taskbar gets the
+folder (IconThemePath) plus an icon name without a path, the way the
+StatusNotifierItem spec expects. Each distinct picture gets its own name, so
+a status change is a new name and the taskbar redraws.
+
+The folder must be one the desktop's default icon lookup also searches
+(~/.local/share/icons): wf-panel-pi checks the name against IconThemePath but
+then loads it with the default icon theme only (src/widgets/tray/item.cpp
+update_icon -> panel/plugin.c load_taskbar_pixbuf), so a picture found only
+in IconThemePath is never drawn (v0.4.3 on BD-1, 7 Nov).
 
 Only the AppIndicator backend is changed; on Windows and the Mac nothing here
 runs. If anything goes wrong, pystray's own way is left in place.

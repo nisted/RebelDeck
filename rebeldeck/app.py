@@ -472,7 +472,10 @@ class App:
         if LINUX:
             # the Pi's taskbar can't draw pystray's temp-file icons: give it named PNGs
             from . import trayfix
-            folder = os.path.join(settings.DIR, "tray-icons")
+            # where the desktop's own icon lookup looks too: the Pi taskbar checks the
+            # app's folder but then loads by name from the system's icon folders only
+            folder = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "icons")
+            trayfix.tidy(os.path.join(settings.DIR, "tray-icons"), APP, [])     # v0.4.3's folder
             if trayfix.install(pystray, APP, folder):
                 trayfix.tidy(folder, APP, self.icon_images.values())
         self.icon = pystray.Icon(APP, self.icon_images["none"], f"{APP} {LABEL}", menu)

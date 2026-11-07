@@ -101,6 +101,11 @@ if [ "$MODE" = desktop ]; then
     entry --login > "$AUTOSTART"
     chown "$USER_NAME:$USER_NAME" "$AUTOSTART"
     entry "" > /usr/share/applications/rebeldeck.desktop
+    if command -v labwc >/dev/null 2>&1; then
+        # labwc draws its own title bar on the frameless deck windows: a window rule turns it off
+        sudo -u "$USER_NAME" python3 "$DEST/pi/labwc_rule.py" "$HOME_DIR" | sed 's/^/[rebeldeck] /' || true
+        pkill -HUP -u "$USER_NAME" -x labwc 2>/dev/null || true      # labwc rereads its config
+    fi
     if [ -n "${WAYLAND_DISPLAY:-}" ] || loginctl show-session "$(loginctl | awk -v u="$USER_NAME" '$3==u{print $1; exit}')" -p Type 2>/dev/null | grep -q wayland; then
         say "This Pi's desktop uses Wayland: deck windows may not float on top or remember where they were."
         say "To get both, switch to X11: sudo raspi-config -> Advanced Options -> Wayland -> X11."

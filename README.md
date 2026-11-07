@@ -50,7 +50,9 @@ service for phones and tablets.
 Known limits: a press always ends in a release in Companion (the Satellite API has no "cancel"); on Wayland Pi
 desktops, float and remembered positions may not work. On Linux, deck windows are drawn without WebKit's GPU paths
 (`WEBKIT_DISABLE_DMABUF_RENDERER=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`; set either to 0 to try them), and the tray icon
-is saved as named pictures in `~/.config/rebeldeck/tray-icons` so the Pi's taskbar can draw it.
+is saved as named pictures in `~/.local/share/icons` so the Pi's taskbar can draw it. The Pi installer adds a labwc
+window rule (in `~/.config/labwc/rc.xml`, old copy kept as `rc.xml.rebeldeck-backup`) so labwc doesn't put its own title bar on
+deck windows.
 
 ## Updating
 

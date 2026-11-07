@@ -462,6 +462,30 @@ def test_tray_icons_named_pngs():
     assert not trayfix.install(types.SimpleNamespace(Icon=Other), "RebelDeck", folder)
 
 
+def test_labwc_rule():
+    sys.path.insert(0, os.path.join(HERE, "..", "pi"))
+    import labwc_rule as L
+    # into an existing <windowRules>, keeping the rest
+    t = '<?xml version="1.0"?>\n<labwc_config>\n  <windowRules>\n    <windowRule identifier="Kodi" serverDecoration="yes" />\n  </windowRules>\n</labwc_config>\n'
+    n = L.add_rule(t)
+    assert n.count("<windowRules>") == 1 and 'identifier="Kodi"' in n and 'title="* · RebelDeck"' in n
+    assert L.add_rule(n) is None                                   # only once
+    # no <windowRules> yet, either root name
+    for root in ("labwc_config", "openbox_config"):
+        n = L.add_rule(f"<{root}>\n  <core/>\n</{root}>\n")
+        assert n.index("<windowRules>") < n.index(f"</{root}>") and "<core/>" in n
+    # the whole file step, with a backup
+    home = tempfile.mkdtemp()
+    os.makedirs(os.path.join(home, ".config", "labwc"))
+    rc = os.path.join(home, ".config", "labwc", "rc.xml")
+    with open(rc, "w") as f:
+        f.write(t)
+    L.main(home)
+    assert "RebelDeck" in open(rc).read() and open(rc + ".rebeldeck-backup").read() == t
+    L.main(home)
+    assert open(rc).read().count("RebelDeck: no labwc") == 1
+
+
 def test_webkit_safe_mode():
     from rebeldeck import app
     saved = {k: os.environ.pop(k, None) for k in ("WEBKIT_DISABLE_DMABUF_RENDERER", "WEBKIT_DISABLE_COMPOSITING_MODE")}
@@ -483,7 +507,8 @@ def test_webkit_safe_mode():
 if __name__ == "__main__":
     test_tray_icons_named_pngs()
     test_webkit_safe_mode()
-    print("ok: tray icons, WebKit safe mode")
+    test_labwc_rule()
+    print("ok: tray icons, WebKit safe mode, labwc rule")
     test_parse()
     test_old_settings_move_over()
     test_password()
