@@ -27,6 +27,8 @@ API (JSON)
   POST /api/decks/<deck>/fader   {"key": n, "value": 0-127}
   POST /api/decks/<deck>/identify   flash its name wherever it's open
   GET  /api/qr.png               QR code of the pick-a-deck page
+  GET  /<n>                      short address: deck n (in the Decks page's order)
+  GET  /api/companions/scan      Companions on this computer and the local network
   GET/POST /api/servers          Companion servers   {name, host, port, default}
   PUT/DELETE /api/servers/<id>
   GET/POST /api/profiles         saved sets of decks  {name}
@@ -218,6 +220,21 @@ def make_server(manager, app=None, rigs=None):
             m = DECK_URL.match(path)
             if m and path.startswith("/deck/") and not m.group(2):
                 return self.deck_page(m.group(1))
+            if re.fullmatch(r"/\d{1,3}", path):
+                # short addresses: /1 is the first deck on the Decks page, /2 the second…
+                n = int(path[1:])
+                decks = manager.cfg["decks"]
+                if not 1 <= n <= len(decks):
+                    return self.send(404, f"<!doctype html><meta name=viewport content='width=device-width'>"
+                                          f"<body style='background:#06070b;color:#e8d6ff;font:16px monospace;padding:20px'>"
+                                          f"<h1>No deck {n}</h1><p>There are {len(decks)}. "
+                                          f"<a style='color:#b973ff' href='/'>Pick a deck</a></p>",
+                                     "text/html; charset=utf-8")
+                self.send_response(302)
+                self.send_header("Location", f"/deck/{decks[n - 1]['slug']}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if path == "/api/status":
                 st = manager.status()
                 st["version"] = __version__
@@ -233,14 +250,25 @@ def make_server(manager, app=None, rigs=None):
                 return self.send(200, self.info())
             if path == "/api/rigs":
                 here = {"name": self.info()["computer"], "url": lan_base(self), "here": True,
-                        "decks": [{"name": d["name"], "slug": d["slug"], "columns": d["columns"],
+                        "decks": [{"name": d["name"], "slug": d["slug"], "n": d["n"], "columns": d["columns"],
                                    "rows": d["rows"], "status": d["status"]} for d in manager.deck_list()]}
                 others = rigs.others() if rigs and manager.cfg.get("find_other_rigs", True) else []
                 return self.send(200, [here] + others)
             if path == "/api/qr.png":
                 return self.send(200, qr.png(lan_base(self) + "/"), "image/png", cache=True)
+            if path == "/api/companions/scan":
+                if not self.allowed():
+                    return self.ask_password()
+                from .rigs import scan_companions
+                known = {(s["host"], s["port"]) for s in manager.cfg["servers"]}
+                found = scan_companions()
+                for f in found:
+                    f["added"] = (f["host"], f["port"]) in known or (
+                        f["host"] == "127.0.0.1" and ("localhost", f["port"]) in known)
+                return self.send(200, found)
             if path == "/api/presets":
-                return self.send(200, [{"name": n, "columns": c, "rows": r} for n, c, r in settings.PRESETS])
+                return self.send(200, [{"name": n, "columns": c, "rows": r, "key_types": lay.get("key_types", {}),
+                                        "strip_rows": lay.get("strip_rows", [])} for n, c, r, lay in settings.PRESETS])
             if path == "/api/decks":
                 return self.send(200, manager.deck_list())
             if path == "/api/servers":

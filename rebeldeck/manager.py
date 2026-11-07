@@ -3,12 +3,14 @@ Companion servers they use; saved profiles; and the app settings they share.
 The web GUI, pop-out and tray all go through here."""
 import copy
 import logging
+import sys
 import threading
 
 from . import settings
 from .satellite import Deck
 
 log = logging.getLogger("rebeldeck")
+WIN = sys.platform == "win32"
 
 # settings the web GUI may change, with their checks
 APP_KEYS = {
@@ -28,8 +30,8 @@ RESTART_APP = ("web_port", "web_network", "discovery_port")
 # deck settings anyone with the GUI may change, and which of them need the deck
 # registering with Companion again
 DECK_KEYS = ("name", "columns", "rows", "showing", "own_server", "server", "click_mode", "blocked",
-             "key_types", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
-REREGISTER = ("name", "columns", "rows", "key_types", "picture_px")
+             "key_types", "strip_rows", "strip_ratio", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
+REREGISTER = ("name", "columns", "rows", "key_types", "strip_rows", "strip_ratio", "picture_px")
 
 PICTURE_STEPS = (72, 96, 120, 144, 196, 240, 288)
 
@@ -110,10 +112,11 @@ class Manager:
 
     def deck_list(self):
         out = []
-        for d in self.cfg["decks"]:
+        for n, d in enumerate(self.cfg["decks"], 1):
             live = self.decks.get(d["id"])
             s = self.server_for(d)
-            out.append({**d, "status": live.status if live else "stopped",
+            out.append({**d, "n": n, "locations": live.locations() if live else [],
+                        "status": live.status if live else "stopped",
                         "companion_at": f"{s['host']}:{s['port']}", "server_name": s["name"],
                         "server_used": s["id"], "picture_px": self.picture_px(d)})
         return out
@@ -212,6 +215,9 @@ class Manager:
             self.on_windows(new["id"], new["showing"])
         elif new["breakout"] != old["breakout"] and self.on_windows and new["showing"]:
             self.on_windows(new["id"], True)      # open or close the broken-out keys' windows
+        elif ((new["transparency"] > 0) != (old["transparency"] > 0) and self.on_windows and new["showing"]
+              and not WIN):
+            self.on_windows(new["id"], "reopen")  # Macs and Pis make a see-through window when it opens
         return new
 
     def remove_deck(self, ref):

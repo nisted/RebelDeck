@@ -91,7 +91,20 @@ button:disabled{opacity:.4;cursor:default}
 .tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .addr{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .addr code{background:#07060c;border:1px solid var(--edge);padding:5px 8px;user-select:all;word-break:break-all}
-.qr{display:none;margin:8px 0;background:#fff;padding:6px;width:max-content}
+.qrmini{width:34px;height:34px;background:#fff;padding:2px;cursor:zoom-in;image-rendering:pixelated;border:1px solid var(--pdim)}
+.qrmini:hover{outline:2px solid var(--purple)}
+.num{font:800 15px var(--head);color:var(--bg);background:var(--purple);padding:4px 8px;flex:none}
+.radios{display:flex;flex-wrap:wrap;gap:6px}
+.radios label{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--pdim);cursor:pointer;color:var(--text);font-size:12px}
+.radios input{accent-color:var(--purple);margin:0}
+.radios label.on{background:var(--pdim);color:#fff}
+.radios label.off{opacity:.4;cursor:default}
+.preview i.strip{aspect-ratio:var(--ratio,2)}
+.preview i.gap{background:transparent;border:1px dotted #3a2d58}
+.preview i.gap::before{content:"gap";color:#3a2d58;font-size:9px}
+.found{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.found button{text-transform:none;font:13px var(--mono)}
+.qr{display:none;margin:8px 0;background:#fff;padding:6px;width:max-content;cursor:zoom-out}
 .qr img{display:block;width:180px;height:180px;image-rendering:pixelated}
 .qr.on{display:block}
 .inline-add{display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:10px;border:1px dashed var(--pdim)}
@@ -151,6 +164,12 @@ code{color:var(--cyan)}
   <h2>Companion</h2>
   <p class="lead">Every Companion your decks talk to. Decks use the <b>default</b> one unless you flip their own-server switch.</p>
   <div id="servers"></div>
+  <div class="card cut">
+    <h3 style="margin-top:0">Find Companions on the network</h3>
+    <div class="row"><button id="scan" title="Look for Companion on this computer and every computer on this network (Satellite port 16622). Takes a few seconds.">Find Companions</button>
+      <span class="hint" id="scanhint">Looks on this computer and your local network.</span></div>
+    <div class="found" id="found"></div>
+  </div>
   <div class="card cut">
     <h3 style="margin-top:0">Add a Companion</h3>
     <div class="row">
@@ -273,12 +292,23 @@ code{color:var(--cyan)}
         Switching to Hybrid starts with every button off (red ✕); click buttons to make them work, or use Select all / Deselect all.</li>
       <li><b>Key type</b>: paint buttons as <b>Button</b>, <b>Rotary</b> or <b>Fader</b>.
         Rotaries: drag left/right or use the scroll wheel to turn; a quick tap pushes.
-        Faders: drag up and down. They work like the Intech Grid's: turn steps, plus a 0-127 surface variable <code>fader_N</code>,
-        and Companion can move them with <code>fader_N_set</code>.</li>
+        Faders: drag up and down. They work like the Intech Grid's, in two ways:
+        <b>turn steps</b> go to the button at that spot on Companion's current page (give it rotate left/right actions, as for a
+        Stream Deck + dial: Companion has no "fader" button type), and the fader's <b>position, 0-127</b>, is a surface variable
+        <code>fader_N</code> that's the same whichever page you're on. Companion can move the fader with <code>fader_N_set</code>.
+        Companion's docs don't say where a Satellite surface's variables show up; look in the deck's surface settings in Companion.</li>
+      <li><b>Gap</b>: an empty space with nothing to press, as Companion leaves on a + XL.</li>
+      <li><b>Strip row</b>: the whole row becomes wide, short buttons, like a Stream Deck + touch strip. <b>Strip shape</b> sets
+        how wide (2 = twice as wide as tall). Wide pictures need Companion 5; older ones send square pictures.</li>
+      <li>Strip rows and gaps use Companion's newer free layout (Companion 4.2+); the presets for the <b>+</b> and <b>+ XL</b>
+        are laid out as Companion lays out the real ones.</li>
+      <li>One key-type layout per deck, whatever Companion page is showing: a fader on a button with no rotate actions does
+        nothing, and can't press that button.</li>
       <li><b>Break out</b>: click a button to give it its own little floating window, anywhere on screen. It keeps its place in Companion.
         Click again (or close its window) to put it back.</li></ul>
     <h3>Browsers, phones and tablets</h3>
-    <p>Each deck has its own address, from its name (<code>/deck/foh-mini</code>). Renaming a deck changes its address, so bookmarks and
+    <p>Each deck has its own address, from its name (<code>/deck/foh-mini</code>), and a short one from its number on the Decks
+      page (<code>/1</code>, <code>/2</code>…). Deleting a deck moves the ones after it up a number (you're warned first). Renaming a deck changes its address, so bookmarks and
       home-screen icons need redoing. The pick-a-deck page (<code>/</code>) lists every deck on this computer and on other RebelDecks
       it can hear on the network. See the Browsers page for the address, QR code and <code>.local</code> name.</p>
     <h3>A deck's QR code on a Companion button</h3>
@@ -339,8 +369,9 @@ function show() {
 addEventListener("hashchange", show);
 
 // ---- decks ----
+const toolChoice = {};
 function presetOptions(sel, c, r) {
-  sel.innerHTML = presets.map(p => `<option value="${p.columns}x${p.rows}">${esc(p.name)} (${p.columns}×${p.rows})</option>`).join("") +
+  sel.innerHTML = presets.map(p => `<option value="${p.columns}x${p.rows}" data-name="${esc(p.name)}">${esc(p.name)} (${p.columns}×${p.rows})</option>`).join("") +
     `<option value="custom">Custom</option>`;
   const m = presets.find(p => p.columns == c && p.rows == r);
   sel.value = m ? `${c}x${r}` : "custom";
@@ -360,6 +391,7 @@ function deckCard(d) {
   el.className = "card cut";
   el.innerHTML = `
     <div class="deckhead">
+      <span class="num" title="This deck's number: its short address is /${d.n}">${d.n}</span>
       <input type="text" class="name" title="The name Companion shows, and this deck's web address. Must be unique.">
       <span class="badge ${d.status}" title="This deck's connection to ${esc(d.server_name)} (${esc(d.companion_at)})">${d.status}</span>
       <button class="small ident" title="Flash this deck's name wherever it's open, and bring its window to the front">Identify</button>
@@ -395,6 +427,8 @@ function deckCard(d) {
       <input type="text" class="nshost" placeholder="Address (e.g. 192.168.1.50)" title="The computer running Companion">
       <input type="number" class="nsport" value="16622" min="1" max="65535" title="Satellite port: 16622 unless changed in Companion">
       <button class="primary small nssave">Save</button><button class="small nscancel">Cancel</button>
+      <button class="small nsfind" title="Look for Companions on the network and pick one">Find…</button>
+      <div class="found nsfound" style="width:100%"></div>
     </div>
     <div class="row">
       <span class="label">Buttons</span>
@@ -406,15 +440,19 @@ function deckCard(d) {
     </div>
     <div class="row tools">
       <span class="label">Click to</span>
-      <select class="tool" title="What clicking a button in the layout below does">
-        <option value="click">Toggle clickable (Hybrid)</option>
-        <option value="button">Make it a button</option>
-        <option value="rotary">Make it a rotary</option>
-        <option value="fader">Make it a fader</option>
-        <option value="breakout">Break out / put back</option>
-      </select>
-      <span class="hint toolhint"></span>
+      <div class="radios tool" title="What clicking a button in the layout below does">
+        <label title="Hybrid only: switch a button between working and ✕"><input type="radio" value="click">Clickable on/off</label>
+        <label title="Make it a plain button"><input type="radio" value="button">Button</label>
+        <label title="A dial: drag or scroll to turn, tap to push"><input type="radio" value="rotary">Rotary</label>
+        <label title="A fader, Intech Grid style"><input type="radio" value="fader">Fader</label>
+        <label title="An empty space: nothing drawn, nothing to press (as Companion leaves on a + XL)"><input type="radio" value="gap">Gap</label>
+        <label title="Make the whole row a strip of wide buttons (like a Stream Deck + touch strip), or back again"><input type="radio" value="strip">Strip row</label>
+        <label title="Pop the button out into its own little window, or put it back"><input type="radio" value="breakout">Break out</label>
+      </div>
     </div>
+    <div class="row"><span class="label"></span><span class="hint toolhint"></span>
+      <label class="stripshape" title="Strip rows: how wide their pictures are compared with their height (2 = twice as wide)">Strip shape
+        <input type="number" class="ratio" min="1" max="8" step="0.5"> : 1</label></div>
     <div class="preview" title="This deck's layout. Click buttons to edit them with the tool above."></div>
     <div class="row addr">
       <span class="label">Browsers</span>
@@ -422,11 +460,14 @@ function deckCard(d) {
       <span class="hint">(any device: phones, iPads, etc.)</span>
       <code class="url"></code>
       <button class="small copyurl" title="Copy the address, to paste into WhatsApp, email or wherever">Copy</button>
-      <button class="small showqr" title="Show a QR code: point a phone's camera at it">QR</button>
+      <img class="qrmini" alt="QR code" title="QR code for this deck: click to make it bigger">
+      <span class="hint">or</span> <code class="short"></code>
+      <button class="small copyshort" title="Copy the short address">Copy</button>
       <span style="flex:1"></span>
       <button class="danger del" title="Remove this deck from RebelDeck and Companion">Delete</button>
     </div>
-    <div class="qr"><img alt="QR code"></div>`;
+    <div class="note renum"></div>
+    <div class="qr" title="Click to make it small again"><img alt="QR code"></div>`;
 
   // name and size
   const name = el.querySelector(".name"), cols = el.querySelector(".cols"), rows = el.querySelector(".rows"),
@@ -438,10 +479,17 @@ function deckCard(d) {
     el.querySelector(".rename").style.display = changed ? "block" : "none";
     el.querySelector(".newaddr").textContent = deckBase() + "/deck/" + slug(name.value);
   };
-  sel.onchange = () => { if (sel.value !== "custom") { const [c, r] = sel.value.split("x"); cols.value = c; rows.value = r; } };
+  sel.onchange = () => { sel.dataset.picked = "1"; if (sel.value !== "custom") { const [c, r] = sel.value.split("x"); cols.value = c; rows.value = r; } };
   const typed = () => { const m = presets.find(p => p.columns == cols.value && p.rows == rows.value); sel.value = m ? `${cols.value}x${rows.value}` : "custom"; };
   cols.oninput = typed; rows.oninput = typed;
-  el.querySelector(".apply").onclick = () => put(d, {name: name.value, columns: +cols.value, rows: +rows.value}, "Saved. Companion's catching up.").then(() => refresh(true));
+  el.querySelector(".apply").onclick = () => {
+    const body = {name: name.value, columns: +cols.value, rows: +rows.value};
+    const p = sel.value !== "custom" && presets.find(x => `${x.columns}x${x.rows}` === sel.value && x.name === sel.selectedOptions[0].dataset.name);
+    if (p && (Object.keys(p.key_types).length || p.strip_rows.length || sel.dataset.picked === "1")) {
+      body.key_types = p.key_types; body.strip_rows = p.strip_rows;       // the preset's layout (dials, strip, gaps)
+    }
+    put(d, body, "Saved. Companion's catching up.").then(() => refresh(true));
+  };
 
   // switches
   const sw = (cls, key, msg) => { const i = el.querySelector(cls); i.checked = !!d[key];
@@ -474,6 +522,21 @@ function deckCard(d) {
     add.classList.remove("on");
     put(d, {own_server: true, server: srv.value}, "Switched. Reconnecting.").then(() => refresh(true));
   };
+  add.querySelector(".nsfind").onclick = async () => {
+    const box = add.querySelector(".nsfound");
+    box.textContent = "Looking…";
+    try {
+      const found = await api("GET", "/api/companions/scan");
+      box.textContent = found.length ? "" : "None found. Is Companion running, and on the same network?";
+      for (const f of found) {
+        const b = document.createElement("button");
+        b.className = "small"; b.textContent = `${f.name} (${f.host}) · Companion ${f.version}`;
+        b.onclick = () => { add.querySelector(".nsname").value = f.name === "This computer" ? "This computer's Companion" : f.name;
+                            add.querySelector(".nshost").value = f.host; add.querySelector(".nsport").value = f.port; };
+        box.appendChild(b);
+      }
+    } catch (e) { box.textContent = e.message; }
+  };
   add.querySelector(".nscancel").onclick = () => { add.classList.remove("on"); serverOptions(srv, d.server || d.server_used); };
   add.querySelector(".nssave").onclick = async () => {
     try {
@@ -485,60 +548,79 @@ function deckCard(d) {
   };
 
   // buttons: modes, tools and the layout editor
-  let mode = d.click_mode, blocked = new Set(d.blocked), types = Object.assign({}, d.key_types), out = new Set(d.breakout);
-  const tool = el.querySelector(".tool"), hint = el.querySelector(".toolhint");
+  let mode = d.click_mode, blocked = new Set(d.blocked), types = Object.assign({}, d.key_types), out = new Set(d.breakout),
+      strips = new Set(d.strip_rows);
+  const toolBox = el.querySelector(".tool"), hint = el.querySelector(".toolhint");
+  // the chosen tool sticks (cards are redrawn as things change)
+  const tool = {get value() { return toolChoice[d.id] || (mode === "hybrid" ? "click" : "button"); },
+                set value(v) { toolChoice[d.id] = v; }};
+  const ratio = el.querySelector(".ratio");
+  ratio.value = d.strip_ratio;
+  ratio.onchange = () => put(d, {strip_ratio: +ratio.value || 2}, "Saved. Companion re-registers the deck.").then(() => refresh(true));
   const hints = {click: "Hybrid only: click a button to switch it between working and ✕.",
     button: "Click a button to make it a plain button again.",
     rotary: "Drag left/right or scroll to turn; tap to push.",
     fader: "Drag up/down. Sends turn steps and a 0-127 variable, like the Intech Grid.",
+    gap: "Click a button to leave an empty space there (click again with Button to bring it back).",
+    strip: "Click any button in a row to make the whole row a strip of wide buttons, or back again.",
     breakout: "Click a button to pop it into its own little window. Click again to put it back."};
   function drawModes() {
     el.querySelectorAll(".mode button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
     el.querySelector(".hybridtools").style.display = mode === "hybrid" ? "" : "none";
-    tool.querySelector("option[value=click]").disabled = mode !== "hybrid";
     if (mode !== "hybrid" && tool.value === "click") tool.value = "button";
-    if (mode === "hybrid" && tool.dataset.auto !== "0") tool.value = "click";
+    toolBox.querySelectorAll("label").forEach(l => {
+      const r = l.querySelector("input"), off = r.value === "click" && mode !== "hybrid";
+      r.name = "tool-" + d.id; r.disabled = off; r.checked = r.value === tool.value;
+      l.classList.toggle("on", r.checked); l.classList.toggle("off", off);
+    });
     hint.textContent = hints[tool.value];
+    el.querySelector(".stripshape").style.display = strips.size ? "" : "none";
   }
+  toolBox.addEventListener("change", e => { tool.value = e.target.value; drawModes(); });
   function drawPreview() {
     pv.style.gridTemplateColumns = `repeat(${d.columns}, 1fr)`;
     pv.style.maxWidth = Math.min(520, d.columns * 52) + "px";
+    pv.style.setProperty("--ratio", d.strip_ratio);
     pv.innerHTML = "";
     for (let i = 0; i < d.columns * d.rows; i++) {
       const c = document.createElement("i");
       c.dataset.i = i;
-      const t = types[String(i)] || "button";
-      c.className = [t !== "button" ? t : "", out.has(i) ? "out" : "",
-        (mode === "unclickable" || (mode === "hybrid" && blocked.has(i))) ? "blocked" : ""].join(" ");
-      c.title = `Key ${i} (row ${Math.floor(i / d.columns) + 1}, column ${i % d.columns + 1}): ${t}` +
-        (out.has(i) ? ", broken out" : "") + (c.classList.contains("blocked") ? ", unclickable" : "");
+      const t = types[String(i)] || "button", row = Math.floor(i / d.columns);
+      c.className = [t !== "button" ? t : "", out.has(i) ? "out" : "", strips.has(row) ? "strip" : "",
+        t !== "gap" && (mode === "unclickable" || (mode === "hybrid" && blocked.has(i))) ? "blocked" : ""].join(" ");
+      // Companion's own numbering where Companion has said (page/row/column), else row/column
+      const loc = d.locations && d.locations[i];
+      c.title = (loc ? `Button ${loc}` : `Row ${row}, column ${i % d.columns}`) + `: ${t}` +
+        (strips.has(row) ? ", strip row" : "") + (out.has(i) ? ", broken out" : "") +
+        (c.classList.contains("blocked") ? ", unclickable" : "");
       pv.appendChild(c);
     }
   }
   let saveT = null;
   function saveButtons(msg) {
     clearTimeout(saveT);
-    saveT = setTimeout(() => put(d, {click_mode: mode, blocked: [...blocked], key_types: types, breakout: [...out]}, msg), 400);
+    saveT = setTimeout(() => put(d, {click_mode: mode, blocked: [...blocked], key_types: types, breakout: [...out],
+                                      strip_rows: [...strips]}, msg), 400);
   }
   el.querySelectorAll(".mode button").forEach(b => b.onclick = () => {
     if (b.dataset.m === mode) return;
     mode = b.dataset.m;
-    if (mode === "hybrid") { blocked = new Set([...Array(d.columns * d.rows).keys()]); tool.dataset.auto = "1"; }
+    if (mode === "hybrid") { blocked = new Set([...Array(d.columns * d.rows).keys()]); tool.value = "click"; }
     drawModes(); drawPreview(); saveButtons(mode === "hybrid" ? "Hybrid: every button's off. Click the ones you want working." : "Saved.");
   });
   el.querySelector(".selall").onclick = () => { blocked = new Set([...Array(d.columns * d.rows).keys()]); drawPreview(); saveButtons(); };
   el.querySelector(".deselall").onclick = () => { blocked = new Set(); drawPreview(); saveButtons(); };
-  tool.onchange = () => { tool.dataset.auto = "0"; hint.textContent = hints[tool.value]; };
   pv.onclick = e => {
     const c = e.target.closest("i");
     if (!c) return;
     const i = +c.dataset.i, t = tool.value;
     if (t === "click") { if (mode !== "hybrid") return; blocked.has(i) ? blocked.delete(i) : blocked.add(i); }
     else if (t === "breakout") { out.has(i) ? out.delete(i) : out.add(i); }
+    else if (t === "strip") { const r = Math.floor(i / d.columns); strips.has(r) ? strips.delete(r) : strips.add(r); drawModes(); }
     else if (t === "button") delete types[String(i)];
     else types[String(i)] = t;
     drawPreview();
-    saveButtons(t === "rotary" || t === "fader" || t === "button" ? "Saved. Companion re-registers the deck for the new key types." : null);
+    saveButtons(["rotary", "fader", "button", "gap", "strip"].includes(t) ? "Saved. Companion re-registers the deck for the new layout." : null);
   };
   drawModes(); drawPreview();
 
@@ -547,13 +629,29 @@ function deckCard(d) {
   el.querySelector(".url").textContent = url;
   el.querySelector(".open").href = url;
   el.querySelector(".copyurl").onclick = () => copy(url);
-  const qr = el.querySelector(".qr");
-  el.querySelector(".showqr").onclick = () => { qr.querySelector("img").src = `/api/decks/${d.id}/qr.png`; qr.classList.toggle("on"); };
+  const short = deckBase() + "/" + d.n;
+  el.querySelector(".short").textContent = short;
+  el.querySelector(".copyshort").onclick = () => copy(short);
+  const qr = el.querySelector(".qr"), mini = el.querySelector(".qrmini");
+  mini.src = qr.querySelector("img").src = `/api/decks/${d.id}/qr.png`;
+  mini.onclick = () => qr.classList.toggle("on");
+  qr.onclick = () => qr.classList.remove("on");
   el.querySelector(".ident").onclick = () => api("POST", `/api/decks/${d.id}/identify`).then(() => toast("Look for the flashing deck.")).catch(e => toast(e.message));
 
-  const del = el.querySelector(".del");
+  const del = el.querySelector(".del"), renum = el.querySelector(".renum");
   del.onclick = async () => {
-    if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "Sure? Tap again"; setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete"; }, 4000); return; }
+    if (!del.classList.contains("armed")) {
+      del.classList.add("armed"); del.textContent = "Sure? Tap again";
+      // the decks after this one move up a number: say so
+      const after = status.decks.filter(x => x.n > d.n);
+      if (after.length) {
+        renum.innerHTML = "Heads up: deleting this renumbers the short addresses after it: " +
+          after.map(x => `<b>${esc(x.name)}</b> /${x.n} → /${x.n - 1}`).join(", ") + ". Bookmarks to those need updating.";
+        renum.style.display = "block";
+      }
+      setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete"; renum.style.display = "none"; }, 6000);
+      return;
+    }
     try { await api("DELETE", "/api/decks/" + d.id); toast("Deck gone. Poof."); refresh(true); } catch (e) { toast(e.message); }
   };
   return el;
@@ -590,6 +688,26 @@ function serverCard(s) {
   };
   return el;
 }
+$("#scan").onclick = async () => {
+  $("#scan").disabled = true; $("#scanhint").textContent = "Looking… (a few seconds)"; $("#found").textContent = "";
+  try {
+    const found = await api("GET", "/api/companions/scan");
+    $("#scanhint").textContent = found.length ? `Found ${found.length}.` : "None found. Is Companion running, and on the same network?";
+    for (const f of found) {
+      const b = document.createElement("button");
+      b.className = "small"; b.disabled = f.added;
+      b.textContent = `${f.added ? "✓ " : "+ "}${f.name} (${f.host}) · Companion ${f.version}`;
+      b.title = f.added ? "Already on your list" : "Add it to your Companions";
+      b.onclick = async () => {
+        try { await api("POST", "/api/servers", {name: f.name === "This computer" ? "This computer's Companion" : f.name, host: f.host, port: f.port});
+              toast("Added."); b.disabled = true; b.textContent = "✓ " + b.textContent.slice(2); refresh(true); }
+        catch (e) { toast(e.message); }
+      };
+      $("#found").appendChild(b);
+    }
+  } catch (e) { $("#scanhint").textContent = e.message; }
+  $("#scan").disabled = false;
+};
 $("#addserver").onclick = async () => {
   try {
     await api("POST", "/api/servers", {name: $("#srvname").value || "Companion", host: $("#srvhost").value,
@@ -614,7 +732,7 @@ async function refresh(force) {
   }
   // rebuild the cards only when something other than live status changed, so
   // editing isn't interrupted; otherwise just update the status badges
-  const strip = x => x.map(d => { const {status: _s, companion: _c, window: _w, ...rest} = d; return rest; });
+  const strip = x => x.map(d => { const {status: _s, companion: _c, window: _w, locations: _l, ...rest} = d; return rest; });
   const newSig = JSON.stringify([strip(status.decks), strip(status.servers), status.default_server, status.local]);
   const box = $("#decks"), sbox = $("#servers");
   if (force || newSig !== sig) {
@@ -639,8 +757,12 @@ async function refresh(force) {
   else n.style.display = "none";
 }
 $("#adddeck").onclick = async () => {
-  try { await api("POST", "/api/decks", {name: $("#newname").value || undefined, columns: +$("#newcols").value, rows: +$("#newrows").value});
-        $("#newname").value = ""; toast("Deck made. Find it in Companion's Surfaces."); refresh(true); }
+  try {
+    const sel = $("#newpreset"), p = sel.value !== "custom" && presets.find(x => x.name === sel.selectedOptions[0].dataset.name);
+    const d = await api("POST", "/api/decks", {name: $("#newname").value || undefined, columns: +$("#newcols").value, rows: +$("#newrows").value});
+    if (p && (Object.keys(p.key_types).length || p.strip_rows.length) && p.columns == $("#newcols").value && p.rows == $("#newrows").value)
+      await api("PUT", "/api/decks/" + d.id, {key_types: p.key_types, strip_rows: p.strip_rows});
+    $("#newname").value = ""; toast("Deck made. Find it in Companion's Surfaces."); refresh(true); }
   catch (e) { toast("Didn't work: " + e.message); }
 };
 $("#newpreset").onchange = () => { const v = $("#newpreset").value; if (v !== "custom") { const [c, r] = v.split("x"); $("#newcols").value = c; $("#newrows").value = r; } };

@@ -16,8 +16,10 @@ jobs:
           python-version: "3.12"
       - run: pip install pyinstaller pystray pillow pywebview
       - name: Build number and icon
+        shell: bash
         run: |
-          python -c "open('rebeldeck/_build.py','w').write('BUILD = \"${{ github.run_number }}\"\n')"
+          printf 'BUILD = "%s"\n' "${{ github.run_number }}" > rebeldeck/_build.py
+          cat rebeldeck/_build.py
           python icon.py
       - name: Build
         run: pyinstaller --noconfirm --onefile --windowed --name RebelDeck --icon icon.ico --hidden-import pystray._win32 --hidden-import rebeldeck.popup --hidden-import rebeldeck.window --collect-all webview --add-data "rebeldeck/deck.html;rebeldeck" --add-data "rebeldeck/gui.html;rebeldeck" --add-data "rebeldeck/home.html;rebeldeck" run.py

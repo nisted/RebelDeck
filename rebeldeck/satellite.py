@@ -42,7 +42,7 @@ def quote(v):
 
 
 class Key:
-    __slots__ = ("image", "color", "text", "text_color", "pressed")
+    __slots__ = ("image", "color", "text", "text_color", "pressed", "location")
 
     def __init__(self):
         self.image = None        # data: URL (PNG) or None
@@ -50,6 +50,7 @@ class Key:
         self.text = ""
         self.text_color = "#ffffff"
         self.pressed = False
+        self.location = None     # Companion's page/row/column, when it says
 
 
 FADER_MAX = 127
@@ -74,6 +75,11 @@ class Deck:
         self._rotary_amount = False
         self._api = (0, 0, 0)
         self.faders = {int(k): 0 for k, t in deck.get("key_types", {}).items() if t == "fader"}
+        self.gaps = {int(k) for k, t in deck.get("key_types", {}).items() if t == "gap"}
+        self.strips = {int(r) for r in deck.get("strip_rows", [])}
+        self.ratio = float(deck.get("strip_ratio", 2) or 2)
+        self._advanced = False              # Companion's free layout (strips, gaps), from API 1.9
+        self._nonsquare = False             # wide pictures, from API 1.11 (Companion 5)
         self._fader_sent = {}
         self._stop = threading.Event()
 
@@ -86,21 +92,28 @@ class Deck:
         self._send("QUIT")
         self._close()
 
+    def _where(self, key):
+        """How Companion knows a key: KEY=n, or CONTROLID="row/column" in the free layout."""
+        if self._advanced:
+            return f'CONTROLID="{key // self.cols}/{key % self.cols}"'
+        return f"KEY={key}"
+
     def press(self, key, pressed):
-        if 0 <= key < len(self.keys):
-            self._send(f"KEY-PRESS DEVICEID={self.device_id} KEY={key} PRESSED={'true' if pressed else 'false'}")
+        if 0 <= key < len(self.keys) and key not in self.gaps:
+            self._send(f"KEY-PRESS DEVICEID={self.device_id} {self._where(key)} PRESSED={'true' if pressed else 'false'}")
 
     def rotate(self, key, steps):
         """A rotary turned: steps > 0 clockwise."""
-        if not (0 <= key < len(self.keys)) or not steps:
+        if not (0 <= key < len(self.keys)) or not steps or key in self.gaps:
             return
         steps = int(steps)
+        where = self._where(key)
         if self._rotary_amount:
-            self._send(f"KEY-ROTATE DEVICEID={self.device_id} KEY={key} DIRECTION={steps}")
+            self._send(f"KEY-ROTATE DEVICEID={self.device_id} {where} DIRECTION={steps}")
         else:
             one = 1 if steps > 0 else -1
             for _ in range(min(abs(steps), 32)):
-                self._send(f"KEY-ROTATE DEVICEID={self.device_id} KEY={key} DIRECTION={one}")
+                self._send(f"KEY-ROTATE DEVICEID={self.device_id} {where} DIRECTION={one}")
 
     def fader(self, key, value):
         """A fader moved on screen to value (0-127)."""
@@ -130,16 +143,21 @@ class Deck:
     def style(self):
         """How the deck page should look and behave (changes without reconnecting)."""
         d = self.deck
-        return {"name": d["name"], "slug": d.get("slug"), "click_mode": d.get("click_mode", "clickable"),
+        return {"name": d["name"], "slug": d.get("slug"), "showing": d.get("showing", True),
+                "click_mode": d.get("click_mode", "clickable"),
                 "blocked": d.get("blocked", []), "key_types": d.get("key_types", {}),
                 "breakout": d.get("breakout", []), "float": d.get("float", True),
                 "movable": d.get("movable", True), "transparency": d.get("transparency", 0),
+                "strip_rows": d.get("strip_rows", []), "strip_ratio": d.get("strip_ratio", 2),
                 "colour": d.get("colour", "#000000"), "faders": {str(k): v for k, v in self.faders.items()}}
 
     def key_json(self, i):
         k = self.keys[i]
         return {"i": i, "image": k.image, "color": k.color, "text": k.text,
-                "textColor": k.text_color, "pressed": k.pressed}
+                "textColor": k.text_color, "pressed": k.pressed, "location": k.location}
+
+    def locations(self):
+        return [k.location for k in self.keys]
 
     # ---- connection ---------------------------------------------------
     def _set_status(self, s):
@@ -230,14 +248,40 @@ class Deck:
                     self._add_device()
                     added = True
 
+    def strip_px(self):
+        """(width, height) of a strip row's pictures."""
+        if not self._nonsquare:
+            return self.picture_px, self.picture_px
+        return self.picture_px, max(16, round(self.picture_px / self.ratio))
+
     def _add_device(self):
         parts = [
             "ADD-DEVICE", f"DEVICEID={self.device_id}", f"PRODUCT_NAME={quote(self.deck['name'])}",
             f"SERIAL={quote('rebeldeck:' + self.id)}",
-            f"KEYS_TOTAL={len(self.keys)}", f"KEYS_PER_ROW={self.cols}",
-            f"BITMAPS={self.picture_px}", "COLORS=hex", "TEXT=true", "TEXT_STYLE=true",
-            "BRIGHTNESS=true",
         ]
+        # strips and gaps need Companion's free layout (API 1.9+): every key a
+        # control at its row/column, gaps left out, strip rows with wide pictures
+        self._advanced = bool(self.strips or self.gaps) and self._api >= (1, 9, 0)
+        if self._advanced:
+            px = self.picture_px
+            sw, sh = self.strip_px()
+            base = {"colors": "hex", "text": True, "textStyle": True}
+            manifest = {"stylePresets": {"default": dict(base, bitmap={"w": px, "h": px}),
+                                         "strip": dict(base, bitmap={"w": sw, "h": sh})},
+                        "controls": {}}
+            for k in range(len(self.keys)):
+                if k in self.gaps:
+                    continue
+                r, c = divmod(k, self.cols)
+                ctl = {"row": r, "column": c}
+                if r in self.strips:
+                    ctl["stylePreset"] = "strip"
+                manifest["controls"][f"{r}/{c}"] = ctl
+            parts.append("LAYOUT_MANIFEST=" + base64.b64encode(json.dumps(manifest).encode()).decode())
+        else:
+            parts += [f"KEYS_TOTAL={len(self.keys)}", f"KEYS_PER_ROW={self.cols}",
+                      f"BITMAPS={self.picture_px}", "COLORS=hex", "TEXT=true", "TEXT_STYLE=true"]
+        parts.append("BRIGHTNESS=true")
         if self._png:
             parts.append("BITMAP_FORMAT=png")
         if self.faders and self._api >= (1, 7, 0):
@@ -262,6 +306,7 @@ class Deck:
         elif cmd == "CAPS":
             self._png = "png" in a.get("BITMAP_FORMATS", "").split(",")
             self._rotary_amount = "ROTARY_AMOUNT" in a
+            self._nonsquare = "NONSQUARE" in a
             return "caps"
         elif cmd == "VARIABLE-VALUE" and a.get("DEVICEID") == self.device_id:
             name = a.get("VARIABLE", "")
@@ -302,14 +347,21 @@ class Deck:
 
     def _key_state(self, a):
         try:
-            i = int(a.get("KEY", -1))
+            if "CONTROLID" in a:
+                r, c = (int(x) for x in a["CONTROLID"].split("/"))
+                i = r * self.cols + c if 0 <= c < self.cols else -1
+            else:
+                i = int(a.get("KEY", -1))
         except ValueError:
             return
         if not 0 <= i < len(self.keys):
             return
         k = self.keys[i]
+        if a.get("LOCATION"):
+            k.location = a["LOCATION"]
         if "BITMAP" in a:
-            k.image = self._image(a["BITMAP"])
+            strip = self._advanced and (i // self.cols) in self.strips
+            k.image = self._image(a["BITMAP"], self.strip_px() if strip else None)
         if "COLOR" in a:
             k.color = a["COLOR"]
         if "TEXTCOLOR" in a:
@@ -323,7 +375,7 @@ class Deck:
             k.pressed = a["PRESSED"] in ("1", "true")
         self._emit("key", i)
 
-    def _image(self, value):
+    def _image(self, value, size=None):
         if not value:
             return None
         if value.startswith("data:"):
@@ -331,11 +383,14 @@ class Deck:
         # raw 8-bit RGB: turn it into a PNG the browser can show
         try:
             raw = base64.b64decode(value)
-            side = int((len(raw) // 3) ** 0.5)
-            if side * side * 3 != len(raw):
-                return None
+            if size and size[0] * size[1] * 3 == len(raw):
+                w, h = size
+            else:
+                w = h = int((len(raw) // 3) ** 0.5)
+                if w * h * 3 != len(raw):
+                    return None
             from PIL import Image
-            im = Image.frombytes("RGB", (side, side), raw)
+            im = Image.frombytes("RGB", (w, h), raw)
             out = io.BytesIO()
             im.save(out, "PNG")
             return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()

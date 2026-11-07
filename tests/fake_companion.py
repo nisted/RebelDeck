@@ -5,13 +5,13 @@ import threading
 
 
 class FakeCompanion:
-    def __init__(self, png=True, caps=True, rotary_amount=False):
+    def __init__(self, png=True, caps=True, rotary_amount=False, nonsquare=True):
         self.srv = socket.socket()
         self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen()
         self.port = self.srv.getsockname()[1]
-        self.png, self.caps, self.rotary_amount = png, caps, rotary_amount
+        self.png, self.caps, self.rotary_amount, self.nonsquare = png, caps, rotary_amount, nonsquare
         self.lines = []
         self.conns = []          # every connection
         self.by_dev = {}         # device id -> its connection
@@ -36,7 +36,7 @@ class FakeCompanion:
         c.sendall(b"BEGIN CompanionVersion=5.1.2 ApiVersion=1.16.0\n")
         if self.caps:
             fm = "rgb,png,webp" if self.png else "rgb"
-            extra = " ROTARY_AMOUNT=1" if self.rotary_amount else ""
+            extra = (" ROTARY_AMOUNT=1" if self.rotary_amount else "") + (" NONSQUARE=1" if self.nonsquare else "")
             c.sendall(f"CAPS SUBSCRIPTIONS=1 BITMAP_FORMATS={fm}{extra}\n".encode())
         buf = b""
         while True:
@@ -92,3 +92,10 @@ class FakeCompanion:
     def variable(self, dev, name, value):
         b64 = base64.b64encode(str(value).encode()).decode()
         self.send(f'VARIABLE-VALUE DEVICEID={dev} VARIABLE="{name}" VALUE="{b64}"', dev)
+
+    def key_ctl(self, dev, ctl, w, h, location=None, rgb=(0, 0, 255)):
+        """KEY-STATE in the free layout (CONTROLID), raw RGB w x h."""
+        raw = bytes(rgb) * (w * h)
+        loc = f" LOCATION={location}" if location else ""
+        self.send(f'KEY-STATE DEVICEID={dev} CONTROLID="{ctl}" TYPE=BUTTON BITMAP={base64.b64encode(raw).decode()}'
+                  f" COLOR=#0000ff{loc} PRESSED=0", dev)

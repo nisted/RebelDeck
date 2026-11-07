@@ -35,7 +35,9 @@ DECK_DEFAULTS = {
     "own_server": False, "server": "",          # own_server on: this deck uses "server", not the default
     "click_mode": "clickable",                  # clickable | unclickable | hybrid
     "blocked": [],                              # hybrid: keys that ignore presses
-    "key_types": {},                            # "n": "rotary" | "fader" (others are buttons)
+    "key_types": {},                            # "n": "rotary" | "fader" | "gap" (others are buttons)
+    "strip_rows": [],                           # rows with wide pictures (like a Stream Deck + touch strip)
+    "strip_ratio": 2,                           # strip pictures: width / height
     "breakout": [],                             # keys in their own little windows
     "breakout_windows": {},                     # "n": {"x", "y", "w", "h"}
     "float": True,                              # deck window stays on top
@@ -45,13 +47,29 @@ DECK_DEFAULTS = {
     "window": {},                               # {"x", "y", "w", "h"}: where it was last
 }
 
-KEY_TYPES = ("button", "rotary", "fader")
+KEY_TYPES = ("button", "rotary", "fader", "gap")
 CLICK_MODES = ("clickable", "unclickable", "hybrid")
 
-# Stream Deck sizes, plus a few handy ones (columns, rows)
+def _layout(cols, rows, rotary_row=None, strip_row=None, gap_cols=(), gap_rows=()):
+    kt = {}
+    for c in range(cols):
+        if rotary_row is not None:
+            kt[str(rotary_row * cols + c)] = "rotary"
+        for r in gap_rows:
+            if c in gap_cols:
+                kt[str(r * cols + c)] = "gap"
+    return {"key_types": kt, "strip_rows": [strip_row] if strip_row is not None else []}
+
+
+# Stream Deck sizes, plus a few handy ones: (name, columns, rows, layout).
+# The + and + XL match how Companion lays them out: keys, a touch-strip row of
+# wide buttons, then the dials (+ XL: strip and dials 6 across in 9 columns,
+# with gaps in columns 2, 5 and 8, as Companion leaves them).
 PRESETS = [
-    ("Mini", 3, 2), ("MK.2 / Original", 5, 3), ("XL", 8, 4), ("Plus", 4, 2), ("Neo", 4, 2),
-    ("Pedal-ish strip", 3, 1), ("Big pad", 10, 6),
+    ("Mini", 3, 2, {}), ("MK.2 / Original", 5, 3, {}), ("XL", 8, 4, {}), ("Neo", 4, 2, {}),
+    ("+ (Plus)", 4, 4, _layout(4, 4, rotary_row=3, strip_row=2)),
+    ("+ XL", 9, 6, _layout(9, 6, rotary_row=5, strip_row=4, gap_cols=(1, 4, 7), gap_rows=(4, 5))),
+    ("Pedal-ish strip", 3, 1, {}), ("Big pad", 10, 6, {}),
 ]
 
 MAX_COLS, MAX_ROWS = 32, 32
@@ -144,7 +162,12 @@ def clean_deck(d):
     out["breakout"] = _key_list(out.get("breakout"), total)
     kt = out.get("key_types") if isinstance(out.get("key_types"), dict) else {}
     out["key_types"] = {str(k): v for k, v in kt.items()
-                        if v in ("rotary", "fader") and str(k).isdigit() and int(k) < total}
+                        if v in ("rotary", "fader", "gap") and str(k).isdigit() and int(k) < total}
+    out["strip_rows"] = _key_list(out.get("strip_rows"), out["rows"])
+    try:
+        out["strip_ratio"] = max(1.0, min(8.0, round(float(out.get("strip_ratio", 2)), 2)))
+    except (TypeError, ValueError):
+        out["strip_ratio"] = 2.0
     bw = out.get("breakout_windows") if isinstance(out.get("breakout_windows"), dict) else {}
     out["breakout_windows"] = {str(k): b for k, b in ((k, _box(v)) for k, v in bw.items())
                                if b and str(k).isdigit() and int(k) < total}

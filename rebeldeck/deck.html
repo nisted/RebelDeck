@@ -44,6 +44,9 @@ body.win #wrap{padding:var(--pad)}
 .key span{position:absolute;inset:6%;display:flex;align-items:center;justify-content:center;text-align:center;
   white-space:pre-wrap;word-break:break-word;font-size:calc(var(--k)*.16);pointer-events:none}
 .key.down{transform:scale(.93);filter:brightness(1.35)}
+.key.strip{height:100%;border-radius:4%/8%}
+.key.strip span{font-size:calc(var(--k)*.12)}
+.key.gap{visibility:hidden;pointer-events:none}
 .key.off{cursor:default}
 .key.out{background:transparent!important;border:1px dashed var(--edge);cursor:default}
 .key.out>*{display:none}
@@ -100,7 +103,8 @@ const q = new URLSearchParams(location.search);
 const WIN = q.get("window") === "1";                 // in RebelDeck's own window
 const single = SINGLE !== "" ? +SINGLE : null;      // one broken-out key
 let cols = {{COLS}}, rows = {{ROWS}}, keys = [], data = [], serverUp = false, companion = "connecting";
-let style = {click_mode: "clickable", blocked: [], key_types: {}, breakout: [], float: true, movable: true,
+const applied = {};      // what the window was last set to (float, see-through)
+let style = {showing: true, click_mode: "clickable", blocked: [], key_types: {}, breakout: [], float: true, movable: true,
              transparency: 0, colour: "#000000", faders: {}};
 document.body.classList.toggle("win", WIN);
 document.body.classList.toggle("single", single !== null);
@@ -116,19 +120,29 @@ function dims() {
           head: showHead ? (parseFloat(getComputedStyle(document.body).getPropertyValue("--head")) || 26) : 0};
 }
 function shape() { return single !== null ? [1, 1] : [cols, rows]; }
+// rows' heights in key sizes: 1 for a normal row, 1/ratio for a strip row
+function rowUnits() {
+  if (single !== null) {
+    const strip = (style.strip_rows || []).includes(Math.floor(single / cols));
+    return [strip ? 1 / (style.strip_ratio || 2) : 1];
+  }
+  return [...Array(rows).keys()].map(r => (style.strip_rows || []).includes(r) ? 1 / (style.strip_ratio || 2) : 1);
+}
 function fit() {
-  const {pad, gap, head} = dims(), [c, r] = shape();
+  const {pad, gap, head} = dims(), [c] = shape(), units = rowUnits(), r = units.length;
+  const sum = units.reduce((a, b) => a + b, 0);
   document.documentElement.style.setProperty("--top", head + "px");
   const w = innerWidth, h = innerHeight - head;
-  const k = Math.floor(Math.min((w - pad * 2 - gap * (c - 1)) / c, (h - pad * 2 - gap * (r - 1)) / r));
+  const k = Math.floor(Math.min((w - pad * 2 - gap * (c - 1)) / c, (h - pad * 2 - gap * (r - 1)) / sum));
   deck.style.setProperty("--k", Math.max(16, k) + "px");
   deck.style.gridTemplateColumns = `repeat(${c}, var(--k))`;
+  deck.style.gridTemplateRows = units.map(u => `calc(var(--k) * ${u})`).join(" ");
 }
 // the window's height for a given width, so the deck fills it with no letterbox
 function heightFor(w) {
-  const {pad, gap, head} = dims(), [c, r] = shape();
+  const {pad, gap, head} = dims(), [c] = shape(), units = rowUnits();
   const k = (w - pad * 2 - gap * (c - 1)) / c;
-  return Math.round(head + pad * 2 + k * r + gap * (r - 1));
+  return Math.round(head + pad * 2 + k * units.reduce((a, b) => a + b, 0) + gap * (units.length - 1));
 }
 
 function build() {
@@ -164,6 +178,8 @@ function applyStyle() {
   for (const [i, el] of keys.entries()) {
     if (!el) continue;
     const t = kind(i), out = single === null && style.breakout.includes(i);
+    el.classList.toggle("gap", t === "gap");
+    el.classList.toggle("strip", (style.strip_rows || []).includes(Math.floor(i / cols)));
     el.classList.toggle("rotary", t === "rotary");
     el.classList.toggle("fader", t === "fader");
     el.classList.toggle("out", out);
@@ -184,10 +200,15 @@ function setFader(i, v) {
   style.faders[String(i)] = v;
 }
 
+function where(i) {
+  const loc = data[i] && data[i].location;
+  return loc ? `Button ${loc}` : `Row ${Math.floor(i / cols)}, column ${i % cols}`;
+}
 function paint(k) {
   data[k.i] = k;
   const el = keys[k.i];
   if (!el) return;
+  el.title = where(k.i);
   const img = el.querySelector("img"), span = el.querySelector("span");
   if (k.image) { if (img.src !== k.image) img.src = k.image; img.style.display = ""; span.textContent = ""; }
   else { img.removeAttribute("src"); img.style.display = "none";
@@ -207,14 +228,23 @@ function showStatus() {
 
 function state(s) {
   if (s.gone) { why.textContent = "This deck's been removed. Off you pop."; lost.classList.add("on"); return; }
-  const rebuild = s.cols !== cols || s.rows !== rows || !keys.length;
+  const shapeWas = JSON.stringify([style.strip_rows, style.strip_ratio]);
+  const rebuild = s.cols !== cols || s.rows !== rows || !keys.length ||
+    shapeWas !== JSON.stringify([(s.style || {}).strip_rows, (s.style || {}).strip_ratio]);
   cols = s.cols; rows = s.rows;
   style = Object.assign(style, s.style || {});
   if (rebuild) build(); else applyStyle();
   s.keys.forEach(paint);
   companion = s.status; showStatus();
   if (rebuild && WIN) snapToShape();
-  if (single !== null && !style.breakout.includes(single) && WIN && api()) api().close();
+  if (WIN && api()) {
+    // the window follows the deck's settings, wherever they were changed
+    if (!style.showing || (single !== null && !style.breakout.includes(single))) api().close();
+    if (applied.float !== undefined && applied.float !== style.float) api().set_float(style.float);
+    if (applied.transparency !== undefined && applied.transparency !== style.transparency && api().set_see_through)
+      api().set_see_through(style.transparency);
+  }
+  applied.float = style.float; applied.transparency = style.transparency;
 }
 
 // ---- input ----
@@ -309,6 +339,7 @@ addEventListener("resize", fit);
 // ---- RebelDeck's own window: float, hide, resize locked to the deck's shape ----
 $("float").addEventListener("click", () => {
   style.float = !style.float;
+  applied.float = style.float;
   $("float").classList.toggle("on", style.float);
   if (api()) api().set_float(style.float);
   fetch(API, {method: "PUT", headers: {"Content-Type": "application/json"},

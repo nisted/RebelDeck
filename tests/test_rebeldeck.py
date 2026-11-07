@@ -256,6 +256,59 @@ def run(png, caps, rotary_amount=False):
         call(base, "DELETE", "/api/profiles/Show%20A")
         assert call(base, "GET", "/api/profiles") == []
 
+        # short addresses: /1, /2 in the Decks page's order
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        op = urllib.request.build_opener(NoRedirect)
+        try:
+            op.open(base + "/2")
+            raise AssertionError("no redirect")
+        except urllib.error.HTTPError as e:
+            assert e.code == 302 and e.headers["Location"] == "/deck/foh-deck", (e.code, e.headers["Location"])
+        assert status_of(base, "GET", "/9") == 404
+        assert [d["n"] for d in call(base, "GET", "/api/decks")] == [1, 2]
+
+        # strip rows and gaps: Companion's free layout, wide pictures where Companion allows
+        mine = lambda: [l for l in adds(fc) if second["device_id"] in l]
+        n = len(mine())
+        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 4, "rows": 3, "strip_rows": [1], "strip_ratio": 2,
+                                                         "key_types": {"5": "gap", "8": "rotary"}})
+        assert wait(lambda: len(mine()) == n + 1)
+        reg = mine()[-1]
+        assert "LAYOUT_MANIFEST=" in reg and "KEYS_TOTAL" not in reg, reg
+        man = json.loads(base64.b64decode(parse(reg)[1]["LAYOUT_MANIFEST"]))
+        assert "1/1" not in man["controls"] and len(man["controls"]) == 11
+        assert man["controls"]["1/0"]["stylePreset"] == "strip" and "stylePreset" not in man["controls"]["0/0"]
+        px = man["stylePresets"]["default"]["bitmap"]["w"]
+        sh = px // 2 if caps else px        # wide pictures only where Companion says it can (NONSQUARE)
+        assert man["stylePresets"]["strip"]["bitmap"] == {"w": px, "h": sh}
+        assert wait(lambda: m.deck(second["id"]).status == "connected")
+        n = len(fc.pressed)
+        call(base, "POST", f"/api/decks/{second['id']}/press", {"key": 6, "pressed": True})
+        call(base, "POST", f"/api/decks/{second['id']}/press", {"key": 5, "pressed": True})       # a gap: nothing
+        call(base, "POST", f"/api/decks/{second['id']}/rotate", {"key": 8, "steps": 1})
+        assert wait(lambda: len(fc.pressed) == n + 2), fc.pressed[n:]
+        assert 'CONTROLID="1/2" PRESSED=true' in fc.pressed[n] and 'CONTROLID="2/0" DIRECTION=1' in fc.pressed[n + 1], fc.pressed[n:]
+        fc.key_ctl(second["device_id"], "1/2", px, sh, location="60/7/3")
+        dk = m.deck(second["id"])
+        assert wait(lambda: dk.keys[6].image is not None) and dk.keys[6].location == "60/7/3"
+        assert call(base, "GET", "/api/decks")[1]["locations"][6] == "60/7/3"
+        presets = {p["name"]: p for p in call(base, "GET", "/api/presets")}
+        xl = presets["+ XL"]
+        assert (xl["columns"], xl["rows"], xl["strip_rows"]) == (9, 6, [4])
+        assert sorted(int(k) for k, v in xl["key_types"].items() if v == "gap") == [37, 40, 43, 46, 49, 52]
+        assert sum(v == "rotary" for v in xl["key_types"].values()) == 6
+        plus = presets["+ (Plus)"]
+        assert (plus["columns"], plus["rows"], plus["strip_rows"]) == (4, 4, [2])
+        call(base, "PUT", f"/api/decks/{second['id']}", {"columns": 5, "rows": 3, "strip_rows": [], "key_types": {}})
+        assert wait(lambda: "KEYS_TOTAL=15" in mine()[-1]) and "LAYOUT_MANIFEST" not in mine()[-1]
+
+        # finding Companions: this one answers with its version
+        from rebeldeck.rigs import probe_companion
+        assert probe_companion("127.0.0.1", fc.port) == "5.1.2"
+        assert probe_companion("127.0.0.1", 1) is None
+
         # this rig on the pick-a-deck list
         rl = call(base, "GET", "/api/rigs")
         assert rl[0]["here"] and {d["slug"] for d in rl[0]["decks"]} == {"rebeldeck", "foh-deck"}

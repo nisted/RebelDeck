@@ -107,7 +107,7 @@ class Rigs:
                     url = f"http://{p['ip']}:{p['port']}/api/status"
                     with urllib.request.urlopen(url, timeout=1.5) as r:
                         st = json.load(r)
-                    p["decks"] = [{"name": d["name"], "slug": d.get("slug", d["id"]), "columns": d["columns"],
+                    p["decks"] = [{"name": d["name"], "slug": d.get("slug", d["id"]), "n": d.get("n"), "columns": d["columns"],
                                    "rows": d["rows"], "status": d["status"]} for d in st.get("decks", [])]
                 except Exception:
                     pass
@@ -117,6 +117,74 @@ class Rigs:
                         self.peers[f"{p['ip']}:{p['port']}"].update(decks=p["decks"], fetched=now)
             out.append({"name": p["name"], "url": f"http://{p['ip']}:{p['port']}", "decks": p["decks"]})
         return sorted(out, key=lambda p: p["name"].lower())
+
+
+# ---- finding Companions -----------------------------------------------------------
+def probe_companion(host, port=16622, timeout=0.6):
+    """Companion's version if a Companion answers on host:port (its Satellite
+    port sends "BEGIN CompanionVersion=..." straight away), else None."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            data = b""
+            while b"\n" not in data and len(data) < 512:
+                chunk = s.recv(512)
+                if not chunk:
+                    break
+                data += chunk
+            try:
+                s.sendall(b"QUIT\n")
+            except OSError:
+                pass
+    except OSError:
+        return None
+    line = data.split(b"\n", 1)[0].decode(errors="replace")
+    if not line.startswith("BEGIN"):
+        return None
+    for part in line.split():
+        if part.startswith("CompanionVersion="):
+            return part.split("=", 1)[1]
+    return "?"
+
+
+def scan_companions(port=16622, extra=()):
+    """Every Companion on this computer and on this computer's local network
+    (its /24), with their versions. Takes a few seconds."""
+    from concurrent.futures import ThreadPoolExecutor
+    hosts = ["127.0.0.1"]
+    ip = lan_address()
+    if ip and not ip.startswith("127."):
+        base = ip.rsplit(".", 1)[0]
+        hosts += [f"{base}.{i}" for i in range(1, 255) if f"{base}.{i}" != ip]
+        hosts.append(ip)
+    hosts += [h for h in extra if h not in hosts]
+    with ThreadPoolExecutor(max_workers=64) as pool:
+        found = list(zip(hosts, pool.map(lambda h: probe_companion(h, port), hosts)))
+    out = []
+    seen_here = False
+    for host, ver in found:
+        if ver is None:
+            continue
+        here = host in ("127.0.0.1", ip)
+        if here and seen_here:
+            continue                      # this computer, found twice
+        seen_here = seen_here or here
+        out.append({"host": "127.0.0.1" if here else host, "port": port, "version": ver,
+                    "name": "This computer" if here else host})
+    # computer names, where the network knows them (never waiting long)
+    others = [f for f in out if f["host"] != "127.0.0.1"]
+    if others:
+        from concurrent.futures import ThreadPoolExecutor, wait
+        pool = ThreadPoolExecutor(max_workers=16)
+        futs = {pool.submit(socket.gethostbyaddr, f["host"]): f for f in others}
+        done, _ = wait(futs, timeout=1.5)
+        for fut in done:
+            try:
+                futs[fut]["name"] = fut.result()[0].split(".")[0]
+            except OSError:
+                pass
+        pool.shutdown(wait=False)
+    return out
 
 
 # ---- .local names on Windows (mDNS answers for this computer's name only) -------

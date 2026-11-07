@@ -14,6 +14,7 @@ import json
 import logging
 import sys
 import threading
+import time
 import urllib.request
 
 from . import settings
@@ -90,26 +91,79 @@ def main(argv):
         save_timer[0] = threading.Timer(0.8, save_geometry)
         save_timer[0].start()
 
+    # Requests from the page arrive while the window may be busy handling them;
+    # pywebview's window changes wait for the window to be free. Making a change
+    # and waiting for it from the same request can hang the window (it did with
+    # Float on Windows), so each change is handed to a thread of its own and the
+    # page gets its answer straight away. Resizes are squashed to the latest.
+    pending = {"size": None}
+    size_lock = threading.Lock()
+
+    def later(fn, *args):
+        threading.Thread(target=fn, args=args, daemon=True).start()
+
+    def apply_size():
+        while True:
+            with size_lock:
+                size, pending["size"] = pending["size"], None
+                if size is None:
+                    pending["busy"] = False
+                    return
+            try:
+                window.resize(*size)
+            except Exception as e:
+                log.info("resize: %s", e)
+
+    def set_on_top(on):
+        try:
+            window.on_top = bool(on)
+        except Exception as e:
+            log.info("float: %s", e)
+
+    def set_opacity(a):
+        if WIN:
+            try:
+                window.native.Invoke(__import__("System").Action(lambda: setattr(window.native, "Opacity", a)))
+            except Exception:
+                try:
+                    window.native.Opacity = a
+                except Exception as e:
+                    log.info("transparency: %s", e)
+
     class Api:
         def resize(self, width, height):
             state["w"], state["h"] = int(width), int(height)
-            window.resize(int(width), int(height))
+            with size_lock:
+                pending["size"] = (int(width), int(height))
+                if pending.get("busy"):
+                    return
+                pending["busy"] = True
+            later(apply_size)
 
         def set_float(self, on):
-            window.on_top = bool(on)
+            later(set_on_top, on)
+
+        def set_see_through(self, pct):
+            later(set_opacity, max(0.1, 1 - int(pct) / 100))
 
         def save_geometry(self):
             save_soon()
 
         def front(self):
-            window.show()
-            window.restore()
-            if not window.on_top:
-                window.on_top = True
-                threading.Timer(3, lambda: setattr(window, "on_top", False)).start()
+            def go():
+                try:
+                    window.show()
+                    window.restore()
+                    if not window.on_top:
+                        window.on_top = True
+                        time.sleep(3)
+                        window.on_top = bool(_call(base, "GET", f"/api/decks/{deck_id}/state")["style"]["float"])
+                except Exception as e:
+                    log.info("front: %s", e)
+            later(go)
 
         def close(self):
-            window.destroy()
+            later(window.destroy)
 
     window = webview.create_window(
         title, url, width=int(w), height=int(h), x=state["x"], y=state["y"],

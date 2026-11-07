@@ -128,7 +128,8 @@ class Popup:
         f = tk.Frame(rows, bg=BG)
         f.pack(fill="x", pady=z(6))
         tk.Label(f, text="Browsers", bg=BG, fg=DIM, font=(FONT, z(10))).pack(side="left")
-        qr = self.small(f, "QR", lambda: self.show_qr(None))
+        self.thumbs = {}
+        qr = self.thumb(f, None)
         qr.pack(side="right", padx=(z(6), 0))
         self.lan = tk.Label(f, text="—", bg=BG, fg=TEXT, font=(FONT, z(10)))
         self.lan.pack(side="right")
@@ -265,6 +266,28 @@ class Popup:
         except Exception:
             pass
 
+    def qr_png(self, deck):
+        return self.call("GET", f"/api/decks/{deck['id']}/qr.png" if deck else "/api/qr.png")
+
+    def thumb(self, parent, deck):
+        """A small QR code: click it for a big one."""
+        z = self.z
+        lab = self.tk.Label(parent, bg="white", cursor="hand2", bd=0, highlightthickness=1, highlightbackground=PURPLE2)
+        try:
+            from PIL import Image, ImageTk
+            import io
+            im = Image.open(io.BytesIO(self.qr_png(deck)))
+            img = ImageTk.PhotoImage(im.resize((z(26), z(26)), Image.LANCZOS))
+        except Exception:
+            img = None
+        if img:
+            self.thumbs[deck["id"] if deck else "home"] = img      # keep it alive
+            lab.configure(image=img)
+        else:
+            lab.configure(text="QR", bg=BTN, fg=TEXT, font=(FONT, z(9)), padx=z(6))
+        lab.bind("<Button-1>", lambda e: self.show_qr(deck))
+        return lab
+
     def show_qr(self, deck):
         """QR for one deck, or (deck None) the pick-a-deck page; again to hide."""
         key = deck["id"] if deck else "home"
@@ -274,7 +297,7 @@ class Popup:
             self.place()
             return
         try:
-            png = self.call("GET", f"/api/decks/{deck['id']}/qr.png" if deck else "/api/qr.png")
+            png = self.qr_png(deck)
             try:
                 from PIL import Image, ImageTk
                 import io
@@ -309,7 +332,7 @@ class Popup:
             dot.pack(side="left", padx=(0, z(8)))
             tk.Label(row, text=f"{d['name']}", bg=BG, fg=TEXT, font=(FONT, z(11))).pack(side="left")
             tk.Label(row, text=f"  {d['columns']}×{d['rows']}", bg=BG, fg=DIM, font=(FONT, z(9))).pack(side="left")
-            self.small(row, "QR", (lambda dd: lambda: self.show_qr(dd))(d)).pack(side="right", padx=(z(8), 0))
+            self.thumb(row, d).pack(side="right", padx=(z(8), 0))
             if local:
                 sw = Switch(tk, row, z, (lambda i: lambda on: self.put(f"/api/decks/{i}", {"showing": on}))(d["id"]))
                 sw.set(d["showing"])

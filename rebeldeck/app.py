@@ -196,12 +196,19 @@ class Windows:
     def _close(self, name):
         with self.lock:
             p = self.procs.pop(name, None)
-        if p and p.poll() is None:
+        if not p or p.poll() is not None:
+            return
+        if WIN:
+            # the packaged .exe runs as a launcher plus the real window process:
+            # close the whole tree, not just the launcher (v0.3.0 left windows open)
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True,
+                           creationflags=0x08000000)
+        else:
             p.terminate()
-            try:
-                p.wait(3)
-            except subprocess.TimeoutExpired:
-                p.kill()
+        try:
+            p.wait(3)
+        except subprocess.TimeoutExpired:
+            p.kill()
 
     def _watch(self, name, p):
         p.wait()
@@ -226,7 +233,11 @@ class Windows:
             pass
 
     def set(self, deck_id, show):
-        """Make the windows match the deck: its own, and its broken-out keys'."""
+        """Make the windows match the deck: its own, and its broken-out keys'.
+        show "reopen": close and open again (a change the open window can't make)."""
+        if show == "reopen":
+            self.set(deck_id, False)
+            show = True
         d = self.app._deck(deck_id)
         if not show or not d:
             for name in [n for n in list(self.procs) if n == deck_id or n.startswith(deck_id + ":")]:
