@@ -21,14 +21,30 @@ service for phones and tablets.
 
 ## Three places, three jobs
 
-- **Tray menu**: status, the pop-out, the web GUI, show/hide each deck, update, quit.
-- **Pop-out**: Companion's address, and which decks have their windows open.
-- **Web GUI** (`http://127.0.0.1:8091/gui`): make, name and size decks (presets or any columns × rows),
-  and every setting.
+- **Tray menu**: status, the pop-out, the web GUI, show/hide each deck, identify a deck, update, quit.
+- **Pop-out**: start at login, a switch per deck window, QR codes for phones, Companion status.
+- **Web GUI** (`http://127.0.0.1:8091/gui`): everything else.
 
-Phones and tablets open `http://<this computer>:8091/` and pick a deck. On an iPhone or iPad,
-**Share → Add to Home Screen** makes it open full-screen. Set a web password in Settings and other devices need it
-for the web GUI (pressing buttons stays open).
+## What it does
+
+- **Decks** of any size (presets or columns × rows), each its own Companion surface. Renaming or resizing keeps its
+  Companion setup.
+- **Its own deck windows**: frameless, float on top (switch on the window's header), drag to move, corner grip to
+  resize (locked to the deck's shape), remembers where they were, movable lock, colour and see-through background.
+- **Button editor**: Clickable / Unclickable / Hybrid (pick which buttons work); paint keys as **buttons**,
+  **rotaries** (drag or scroll to turn, tap to push) or **faders** (Intech Grid style: turn steps plus a 0-127 surface
+  variable `fader_N`; Companion moves them with `fader_N_set`); **break out** single keys into their own little
+  floating windows.
+- **Several Companions**: a list of servers with a default; any deck can use its own.
+- **Profiles**: save and switch whole sets of decks.
+- **Browsers**: every deck at `http://<computer>:8091/deck/<deck-name>`, a pick-a-deck page that also lists decks on
+  other RebelDecks on the network, QR codes, and a `<computer>.local` name. Set a web password and other devices need
+  it for the web GUI (pressing buttons stays open).
+- A deck's QR code can sit on a Companion button: Generic HTTP's **Image from URL** feedback with
+  `http://<computer>:8091/api/decks/<deck-name>/qr.png`.
+
+Known limits: a press always ends in a release in Companion (the Satellite API has no "cancel"); on Wayland Pi
+desktops, float and remembered positions may not work.
 
 ## Updating
 
@@ -48,12 +64,12 @@ python3 run.py              # tray icon and deck windows
 python3 run.py --headless   # no tray or windows: phones and tablets only
 ```
 
-Optional: `pystray` and `Pillow` (tray icon; Pillow also for Companions older than API 1.12), `tkinter` (pop-out).
-Deck windows use Edge, Chrome or Chromium in app mode, falling back to the normal browser.
+Optional: `pywebview` (deck windows; without it decks open in the browser), `pystray` and `Pillow` (tray icon;
+Pillow also for QR codes and for Companions older than API 1.12), `tkinter` (pop-out).
 
 Settings live in `~/.config/rebeldeck/settings.json`; the web GUI edits them.
 
-Tests: `python3 tests/test_rebeldeck.py` (against a stand-in Companion).
+Tests: `python3 tests/test_rebeldeck.py` (against a stand-in Companion; needs `opencv-python-headless` to read the QR codes).
 
 ## Licence
 

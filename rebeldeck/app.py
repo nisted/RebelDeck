@@ -156,100 +156,98 @@ def set_login(on):
 
 
 # ---- deck windows ------------------------------------------------------------
-def browser_candidates():
-    if WIN:
-        for base in (os.environ.get(k, "") for k in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")):
-            if base:
-                yield os.path.join(base, r"Google\Chrome\Application\chrome.exe")
-        # Edge last: a new profile signs itself in to the Windows account and
-        # shows a sync screen once per deck window ("Got it" ends it)
-        for base in (os.environ.get(k, "") for k in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")):
-            if base:
-                yield os.path.join(base, r"Microsoft\Edge\Application\msedge.exe")
-    elif MAC:
-        yield "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        yield "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
-        yield "/Applications/Chromium.app/Contents/MacOS/Chromium"
-    else:
-        for name in ("chromium", "chromium-browser", "google-chrome", "microsoft-edge"):
-            p = shutil.which(name)
-            if p:
-                yield p
-
-
 class Windows:
-    """One app-mode browser window per deck, each with its own profile so it
-    can be closed on its own. Closing a window by hand marks the deck hidden."""
+    """Deck windows: RebelDeck's own (pywebview), one small process each, so
+    the app can open and close them for certain. Broken-out keys get windows
+    of their own too. Closing a deck window by hand marks the deck hidden;
+    closing a broken-out key's window puts the key back in the deck.
+    Without pywebview (e.g. running from source), decks open in the browser."""
 
     def __init__(self, app):
         self.app = app
-        self.procs = {}         # deck id -> Popen
+        self.procs = {}         # "id" or "id:key" -> Popen
         self.lock = threading.Lock()
-        self.browser = next((b for b in browser_candidates() if os.path.exists(b)), None)
+        from .window import available
+        self.own = available() or FROZEN
+        if not self.own:
+            log.info("pywebview isn't installed: deck windows open in the browser instead")
+        # v0.2 opened decks in Edge/Chrome with a profile each: tidy those away
+        shutil.rmtree(os.path.join(settings.DIR, "windows"), ignore_errors=True)
 
     def showing(self):
         with self.lock:
-            return {i: p.poll() is None for i, p in self.procs.items()}
+            return {i: p.poll() is None for i, p in self.procs.items() if ":" not in i}
 
-    def show(self, deck_id):
-        d = next((x for x in self.app.m.cfg["decks"] if x["id"] == deck_id), None)
-        if not d:
-            return
+    def _open(self, name, args, d):
         with self.lock:
-            p = self.procs.get(deck_id)
+            p = self.procs.get(name)
             if p and p.poll() is None:
                 return
-        url = f"http://127.0.0.1:{self.app.m.cfg['web_port']}/deck/{deck_id}?window=1"
-        if not self.browser:
-            webbrowser.open(url)
-            return
-        k = int(self.app.m.cfg["key_px"])
-        w = d["columns"] * k + (d["columns"] - 1) * 8 + 28
-        h = d["rows"] * k + (d["rows"] - 1) * 8 + 28
-        profile = os.path.join(settings.DIR, "windows", deck_id)
         try:
-            p = subprocess.Popen([self.browser, f"--app={url}", f"--window-size={w},{h}", f"--user-data-dir={profile}",
-                                  "--no-first-run", "--no-default-browser-check", "--disable-sync",
-                                  "--disable-features=Translate,msImplicitSignin,msEdgeSyncConsent"],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=child_env())
+            p = subprocess.Popen(self_command(*args), env=child_env(),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as e:
-            log.warning("couldn't open the %s window: %s", d["name"], e)
-            webbrowser.open(url)
+            log.warning("couldn't open %s: %s", d["name"], e)
             return
         with self.lock:
-            self.procs[deck_id] = p
-        threading.Thread(target=self._watch, args=(deck_id, p), daemon=True).start()
+            self.procs[name] = p
+        threading.Thread(target=self._watch, args=(name, p), daemon=True).start()
 
-    def _watch(self, deck_id, p):
-        p.wait()
+    def _close(self, name):
         with self.lock:
-            if self.procs.get(deck_id) is not p:
-                return              # replaced or closed by us
-            self.procs.pop(deck_id, None)
-        if not self.app.quitting:
-            # closed by hand: remember it's hidden
-            try:
-                self.app.m.update_deck(deck_id, {"showing": False})
-            except KeyError:
-                pass
-
-    def hide(self, deck_id):
-        with self.lock:
-            p = self.procs.pop(deck_id, None)
+            p = self.procs.pop(name, None)
         if p and p.poll() is None:
             p.terminate()
+            try:
+                p.wait(3)
+            except subprocess.TimeoutExpired:
+                p.kill()
+
+    def _watch(self, name, p):
+        p.wait()
+        with self.lock:
+            if self.procs.get(name) is not p:
+                return              # closed by us
+            self.procs.pop(name, None)
+        if self.app.quitting:
+            return
+        deck_id, _, key = name.partition(":")
+        d = self.app._deck(deck_id)
+        if not d:
+            return
+        try:
+            if key:                 # a broken-out key closed by hand: back into the deck
+                self.app.m.update_deck(deck_id, {"breakout": [k for k in d["breakout"] if str(k) != key]})
+            elif p.returncode == 0:  # the deck window closed by hand: remember it's hidden
+                self.app.m.update_deck(deck_id, {"showing": False})
+            else:
+                log.warning("the %s window stopped (exit %s)", d["name"], p.returncode)
+        except KeyError:
+            pass
 
     def set(self, deck_id, show):
-        if show:
-            # reopening after a resize: close the old window first
-            self.hide(deck_id)
-            self.show(deck_id)
-        else:
-            self.hide(deck_id)
+        """Make the windows match the deck: its own, and its broken-out keys'."""
+        d = self.app._deck(deck_id)
+        if not show or not d:
+            for name in [n for n in list(self.procs) if n == deck_id or n.startswith(deck_id + ":")]:
+                self._close(name)
+            return
+        if not self.own:
+            webbrowser.open(f"http://127.0.0.1:{self.app.m.cfg['web_port']}/deck/{d['slug']}")
+            return
+        self._open(deck_id, ("--deck-window", deck_id), d)
+        want = {f"{deck_id}:{k}" for k in d["breakout"]}
+        for name in [n for n in list(self.procs) if n.startswith(deck_id + ":") and n not in want]:
+            self._close(name)
+        for k in d["breakout"]:
+            self._open(f"{deck_id}:{k}", ("--deck-window", deck_id, "--key", str(k)), d)
+
+    def show(self, deck_id):
+        self.set(deck_id, True)
 
     def close_all(self):
-        for i in list(self.procs):
-            self.hide(i)
+        for name in list(self.procs):
+            self._close(name)
 
 
 # ---- the app --------------------------------------------------------------------
@@ -270,9 +268,20 @@ class App:
         return LABEL
 
     def lan_url(self):
-        if not self.m.cfg.get("web_network", True):
+        ip = lan_address()
+        if not self.m.cfg.get("web_network", True) or not ip or ip.startswith("127."):
             return ""
-        return f"http://{lan_address()}:{self.m.cfg['web_port']}/"
+        return f"http://{ip}:{self.m.cfg['web_port']}/"
+
+    def identify(self, deck_id):
+        """From the tray or GUI: make sure the deck's window is open (it flashes its name)."""
+        d = self._deck(deck_id)
+        if d and self.windows and not d["showing"]:
+            self.m.set_showing(deck_id, True)
+
+    def popup_show(self):
+        if not (self.popup_proc and self.popup_proc.poll() is None):
+            self.toggle_popup()
 
     def windows_showing(self):
         return self.windows.showing() if self.windows else {}
@@ -380,6 +389,10 @@ class App:
                 pass
 
     def open_gui(self, page=""):
+        # the pop-out steps aside for the web GUI
+        if self.popup_proc and self.popup_proc.poll() is None:
+            self.popup_proc.terminate()
+            self.popup_proc = None
         webbrowser.open(f"http://127.0.0.1:{self.m.cfg['web_port']}/gui{('#' + page) if page else ''}")
 
     def toggle_popup(self):
@@ -418,6 +431,11 @@ class App:
                     checked=(lambda i: lambda _: bool(self._deck(i) and self._deck(i)["showing"]))(d["id"])))
             return items or [pystray.MenuItem("No decks yet", None, enabled=False)]
 
+        def identify_items():
+            items = [pystray.MenuItem(d["name"], (lambda i: lambda *_: (self.identify(i), self.m.identify(i)))(d["id"]))
+                     for d in self.m.cfg["decks"]]
+            return items or [pystray.MenuItem("No decks yet", None, enabled=False)]
+
         def update_text(_=None):
             u = self.update_cached()
             return f"Update to {u['latest']}" if u["newer"] else "Check for updates"
@@ -433,6 +451,7 @@ class App:
             pystray.MenuItem("Show/hide pop-out", lambda *_: self.toggle_popup(), default=True),
             pystray.MenuItem("Open web GUI", lambda *_: self.open_gui()),
             pystray.MenuItem("Decks", pystray.Menu(lambda: deck_items())),
+            pystray.MenuItem("Identify a deck", pystray.Menu(lambda: identify_items())),
             pystray.MenuItem(update_text, do_update),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f"Quit {APP}", lambda *_: self.quit()),
@@ -490,8 +509,11 @@ class App:
             # the installer waits for this to go before replacing the app
             import ctypes
             self._mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "RebelDeckRunning")
+        from .rigs import LocalName, Rigs
+        self.rigs = Rigs(int(self.m.cfg["web_port"]), int(self.m.cfg.get("discovery_port", 8092)),
+                         enabled=bool(self.m.cfg.get("web_network", True)))
         try:
-            server = make_server(self.m, self)
+            server = make_server(self.m, self, self.rigs)
         except OSError as e:
             if already_running(self.m.cfg["web_port"]):
                 log.info("already running: opening the web GUI")
@@ -500,6 +522,9 @@ class App:
             log.error("can't use port %s: %s", self.m.cfg["web_port"], e)
             return 1
         threading.Thread(target=server.serve_forever, name="web", daemon=True).start()
+        self.rigs.start()
+        if self.m.cfg.get("web_network", True):
+            LocalName().start()
         self.m.start()
         log.info("decks for phones and tablets: %s", self.lan_url() or "(off)")
         if self.windows:
@@ -545,6 +570,12 @@ def already_running(port):
 
 
 def main(argv):
+    if "--deck-window" in argv:
+        # its own quiet log: several processes sharing one rotating log file trip over each other on Windows
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s",
+                            filename=os.path.join(settings.DIR, "windows.log"))
+        from .window import main as window_main
+        return window_main(argv)
     if "--popup" in argv:
         from .popup import main as popup_main
         return popup_main()

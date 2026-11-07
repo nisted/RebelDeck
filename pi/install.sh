@@ -53,7 +53,11 @@ say "Mode: $MODE"
 # Packages
 need=()
 pkgs=(python3-pil rsync)
-[ "$MODE" = desktop ] && pkgs+=(python3-venv python3-gi gir1.2-ayatanaappindicator3-0.1 python3-tk)
+if [ "$MODE" = desktop ]; then
+    # tray icon, pop-out, and RebelDeck's own deck windows (pywebview on WebKitGTK)
+    pkgs+=(python3-venv python3-gi gir1.2-ayatanaappindicator3-0.1 python3-tk python3-pil.imagetk)
+    if apt-cache show gir1.2-webkit2-4.1 >/dev/null 2>&1; then pkgs+=(gir1.2-webkit2-4.1); else pkgs+=(gir1.2-webkit2-4.0); fi
+fi
 for p in "${pkgs[@]}"; do
     dpkg -s "$p" >/dev/null 2>&1 || need+=("$p")
 done
@@ -87,7 +91,7 @@ if [ "$MODE" = desktop ]; then
         say "Setting up the tray app's Python"
         python3 -m venv --system-site-packages "$DEST/venv"
     fi
-    "$DEST/venv/bin/pip" install --quiet --upgrade pystray
+    "$DEST/venv/bin/pip" install --quiet --upgrade pystray pywebview
     (cd "$DEST" && "$DEST/venv/bin/python" -c "from icon import draw; draw(256).save('icon.png')")
     entry() {
         printf '[Desktop Entry]\nType=Application\nName=RebelDeck\nComment=Companion button decks on any screen\nExec=%s %s %s\nIcon=%s\nTerminal=false\nCategories=AudioVideo;Utility;\n' \
@@ -97,8 +101,10 @@ if [ "$MODE" = desktop ]; then
     entry --login > "$AUTOSTART"
     chown "$USER_NAME:$USER_NAME" "$AUTOSTART"
     entry "" > /usr/share/applications/rebeldeck.desktop
-    command -v chromium >/dev/null || command -v chromium-browser >/dev/null \
-        || say "No Chromium found: deck windows open in the normal browser instead."
+    if [ -n "${WAYLAND_DISPLAY:-}" ] || loginctl show-session "$(loginctl | awk -v u="$USER_NAME" '$3==u{print $1; exit}')" -p Type 2>/dev/null | grep -q wayland; then
+        say "This Pi's desktop uses Wayland: deck windows may not float on top or remember where they were."
+        say "To get both, switch to X11: sudo raspi-config -> Advanced Options -> Wayland -> X11."
+    fi
     say "Done: build $(cat "$DEST/BUILD" 2>/dev/null || echo dev). It starts at the next login (or open RebelDeck from the menu)."
 else
     touch "$DEST/HEADLESS"

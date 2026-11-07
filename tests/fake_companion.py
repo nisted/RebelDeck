@@ -5,13 +5,13 @@ import threading
 
 
 class FakeCompanion:
-    def __init__(self, png=True, caps=True):
+    def __init__(self, png=True, caps=True, rotary_amount=False):
         self.srv = socket.socket()
         self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.srv.bind(("127.0.0.1", 0))
         self.srv.listen()
         self.port = self.srv.getsockname()[1]
-        self.png, self.caps = png, caps
+        self.png, self.caps, self.rotary_amount = png, caps, rotary_amount
         self.lines = []
         self.conns = []          # every connection
         self.by_dev = {}         # device id -> its connection
@@ -36,7 +36,8 @@ class FakeCompanion:
         c.sendall(b"BEGIN CompanionVersion=5.1.2 ApiVersion=1.16.0\n")
         if self.caps:
             fm = "rgb,png,webp" if self.png else "rgb"
-            c.sendall(f"CAPS SUBSCRIPTIONS=1 BITMAP_FORMATS={fm}\n".encode())
+            extra = " ROTARY_AMOUNT=1" if self.rotary_amount else ""
+            c.sendall(f"CAPS SUBSCRIPTIONS=1 BITMAP_FORMATS={fm}{extra}\n".encode())
         buf = b""
         while True:
             try:
@@ -63,7 +64,7 @@ class FakeCompanion:
             self.added.set()
         elif line.startswith("PING"):
             c.sendall(("PONG" + line[4:] + "\n").encode())
-        elif line.startswith("KEY-PRESS"):
+        elif line.startswith(("KEY-PRESS", "KEY-ROTATE", "SET-VARIABLE-VALUE")):
             self.pressed.append(line)
 
     def key_rgb(self, dev, key, side, rgb=(255, 0, 0), text="GO"):
@@ -87,3 +88,7 @@ class FakeCompanion:
             pass
         self.srv.close()
         self.drop()
+
+    def variable(self, dev, name, value):
+        b64 = base64.b64encode(str(value).encode()).decode()
+        self.send(f'VARIABLE-VALUE DEVICEID={dev} VARIABLE="{name}" VALUE="{b64}"', dev)

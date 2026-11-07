@@ -3,11 +3,17 @@
 Each deck has its own connection, so it shows up in Companion as its own
 surface and can be added, resized or removed without disturbing the others.
 
-Connects over TCP, registers the deck, keeps button states and passes taps
-back. Reconnects on its own if Companion goes away. Runs in its own thread;
-listeners are called with ("key", n) when a button changes and ("status", s)
-when the connection does.
+Connects over TCP, registers the deck, keeps button states and passes taps,
+rotary turns and fader moves back. Reconnects on its own if Companion goes
+away. Runs in its own thread; listeners are called with ("key", n) when a
+button changes, ("status", s) when the connection does, ("fader", (n, value))
+when Companion moves a fader and ("brightness", v).
+
+Rotaries send KEY-ROTATE. Faders work like the Intech Grid's: each one sends
+KEY-ROTATE steps as it moves, and its position (0-127) as a surface variable
+("fader_<n>"); Companion can move it with the output variable "fader_<n>_set".
 """
+import json
 import base64
 import io
 import logging
@@ -46,10 +52,14 @@ class Key:
         self.pressed = False
 
 
+FADER_MAX = 127
+
+
 class Deck:
-    def __init__(self, cfg, deck):
-        self.cfg = cfg                      # app settings: Companion's address, picture size
-        self.deck = deck                    # this deck: id, name, columns, rows, device_id
+    def __init__(self, server, deck, picture_px=144):
+        self.server = server                # {"host", "port", ...}: the Companion this deck uses
+        self.picture_px = int(picture_px)
+        self.deck = deck                    # this deck: id, name, columns, rows, device_id, key types…
         self.id = deck["id"]
         self.device_id = deck["device_id"]
         self.cols, self.rows = int(deck["columns"]), int(deck["rows"])
@@ -61,6 +71,10 @@ class Deck:
         self._sock = None
         self._lock = threading.Lock()
         self._png = False
+        self._rotary_amount = False
+        self._api = (0, 0, 0)
+        self.faders = {int(k): 0 for k, t in deck.get("key_types", {}).items() if t == "fader"}
+        self._fader_sent = {}
         self._stop = threading.Event()
 
     # ---- public -------------------------------------------------------
@@ -76,13 +90,51 @@ class Deck:
         if 0 <= key < len(self.keys):
             self._send(f"KEY-PRESS DEVICEID={self.device_id} KEY={key} PRESSED={'true' if pressed else 'false'}")
 
+    def rotate(self, key, steps):
+        """A rotary turned: steps > 0 clockwise."""
+        if not (0 <= key < len(self.keys)) or not steps:
+            return
+        steps = int(steps)
+        if self._rotary_amount:
+            self._send(f"KEY-ROTATE DEVICEID={self.device_id} KEY={key} DIRECTION={steps}")
+        else:
+            one = 1 if steps > 0 else -1
+            for _ in range(min(abs(steps), 32)):
+                self._send(f"KEY-ROTATE DEVICEID={self.device_id} KEY={key} DIRECTION={one}")
+
+    def fader(self, key, value):
+        """A fader moved on screen to value (0-127)."""
+        if key not in self.faders:
+            return
+        value = max(0, min(FADER_MAX, int(value)))
+        old = self.faders[key]
+        self.faders[key] = value
+        if value != old:
+            self.rotate(key, value - old)
+        if self._fader_sent.get(key) != value:
+            self._fader_sent[key] = value
+            b64 = base64.b64encode(str(value).encode()).decode()
+            self._send(f"SET-VARIABLE-VALUE DEVICEID={self.device_id} VARIABLE=fader_{key} VALUE={b64}")
+        self._emit("fader", (key, value))
+
     def snapshot(self):
+        d = self.deck
         return {
-            "id": self.id, "name": self.deck["name"],
+            "id": self.id, "slug": d.get("slug", self.id), "name": d["name"],
             "cols": self.cols, "rows": self.rows, "status": self.status,
             "companion": self.companion_version, "brightness": self.brightness,
             "keys": [self.key_json(i) for i in range(len(self.keys))],
+            "style": self.style(),
         }
+
+    def style(self):
+        """How the deck page should look and behave (changes without reconnecting)."""
+        d = self.deck
+        return {"name": d["name"], "slug": d.get("slug"), "click_mode": d.get("click_mode", "clickable"),
+                "blocked": d.get("blocked", []), "key_types": d.get("key_types", {}),
+                "breakout": d.get("breakout", []), "float": d.get("float", True),
+                "movable": d.get("movable", True), "transparency": d.get("transparency", 0),
+                "colour": d.get("colour", "#000000"), "faders": {str(k): v for k, v in self.faders.items()}}
 
     def key_json(self, i):
         k = self.keys[i]
@@ -139,7 +191,7 @@ class Deck:
             delay = min(delay * 2, 10)               # 1, 2, 4, 8, 10, 10 … seconds
 
     def _session(self):
-        host, port = self.cfg["companion_host"], int(self.cfg["companion_port"])
+        host, port = self.server["host"], int(self.server["port"])
         self._set_status("connecting")
         s = socket.create_connection((host, port), timeout=5)
         s.settimeout(1)
@@ -179,25 +231,51 @@ class Deck:
                     added = True
 
     def _add_device(self):
-        c = self.cfg
         parts = [
             "ADD-DEVICE", f"DEVICEID={self.device_id}", f"PRODUCT_NAME={quote(self.deck['name'])}",
             f"SERIAL={quote('rebeldeck:' + self.id)}",
             f"KEYS_TOTAL={len(self.keys)}", f"KEYS_PER_ROW={self.cols}",
-            f"BITMAPS={int(c['button_px'])}", "COLORS=hex", "TEXT=true", "TEXT_STYLE=true",
+            f"BITMAPS={self.picture_px}", "COLORS=hex", "TEXT=true", "TEXT_STYLE=true",
             "BRIGHTNESS=true",
         ]
         if self._png:
             parts.append("BITMAP_FORMAT=png")
+        if self.faders and self._api >= (1, 7, 0):
+            rc = lambda k: f"{k // self.cols + 1}/{k % self.cols + 1}"
+            vs = []
+            for k in sorted(self.faders):
+                vs.append({"id": f"fader_{k}", "type": "input", "name": f"Fader {rc(k)} position",
+                           "description": f"0-{FADER_MAX}, as the fader on key {k} (row/column {rc(k)}) is moved"})
+                vs.append({"id": f"fader_{k}_set", "type": "output", "name": f"Fader {rc(k)} move to",
+                           "description": f"Set this (0-{FADER_MAX}) to move the on-screen fader on key {k}"})
+            parts.append("VARIABLES=" + base64.b64encode(json.dumps(vs).encode()).decode())
         self._send(" ".join(parts))
 
     def _handle(self, line):
         cmd, a = parse(line)
         if cmd == "BEGIN":
             self.companion_version = a.get("CompanionVersion", "")
+            try:
+                self._api = tuple(int(x) for x in a.get("ApiVersion", "0.0.0").split(".")[:3])
+            except ValueError:
+                self._api = (0, 0, 0)
         elif cmd == "CAPS":
             self._png = "png" in a.get("BITMAP_FORMATS", "").split(",")
+            self._rotary_amount = "ROTARY_AMOUNT" in a
             return "caps"
+        elif cmd == "VARIABLE-VALUE" and a.get("DEVICEID") == self.device_id:
+            name = a.get("VARIABLE", "")
+            if name.startswith("fader_") and name.endswith("_set"):
+                try:
+                    k = int(name[6:-4])
+                    v = base64.b64decode(a.get("VALUE", "")).decode().strip()
+                    v = max(0, min(FADER_MAX, int(float(v))))
+                except ValueError:
+                    return None
+                if k in self.faders:
+                    self.faders[k] = v
+                    self._fader_sent[k] = v
+                    self._emit("fader", (k, v))
         elif cmd == "PING":
             self._send("PONG " + line[5:])
         elif cmd == "ADD-DEVICE":
