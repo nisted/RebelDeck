@@ -125,6 +125,46 @@ def main(argv):
         ok = u.SetWindowPos(h_, after, 0, 0, w, h, flags | 0x0002 | 0x0010 | 0x4000)   # NOMOVE, NOACTIVATE, ASYNC
         return bool(ok)
 
+    def win_move(x, y):
+        """Move the window (physical pixels), queued, never waiting."""
+        import ctypes
+        from ctypes import wintypes
+        h_ = find_hwnd()
+        if not h_:
+            return False
+        u = ctypes.windll.user32
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        return bool(u.SetWindowPos(h_, None, int(x), int(y), 0, 0, 0x0001 | 0x0004 | 0x0010 | 0x0200 | 0x4000))
+        #                                                   NOSIZE  NOZORDER NOACTIVATE NOOWNERZORDER ASYNC
+
+    def win_rect():
+        import ctypes
+        from ctypes import wintypes
+        r = wintypes.RECT()
+        if find_hwnd() and ctypes.windll.user32.GetWindowRect(find_hwnd(), ctypes.byref(r)):
+            return r.left, r.top
+        return None
+
+    # dragging by the header: the page reports how far the mouse has moved since
+    # it went down; the window follows (pywebview's own drag didn't on Windows)
+    drag = {"from": None, "to": None, "busy": False}
+    drag_lock = threading.Lock()
+
+    def apply_drag():
+        while True:
+            with drag_lock:
+                to, drag["to"] = drag["to"], None
+                if to is None or drag["from"] is None:
+                    drag["busy"] = False
+                    return
+            x0, y0, k = drag["from"]
+            nx, ny = x0 + to[0] * k, y0 + to[1] * k
+            try:
+                if not (WIN and win_move(nx, ny)):
+                    window.move(int(nx), int(ny))
+            except Exception as e:
+                log.info("move: %s", e)
+
     def dpi_scale():
         try:
             import ctypes
@@ -189,6 +229,25 @@ def main(argv):
             later(set_opacity, max(0.1, 1 - int(pct) / 100))
 
         def save_geometry(self):
+            save_soon()
+
+        def drag_start(self):
+            if WIN and win_rect():
+                x, y = win_rect()
+                drag["from"] = (x, y, dpi_scale())
+            else:
+                drag["from"] = (state.get("x") or 0, state.get("y") or 0, 1)
+
+        def drag_to(self, dx, dy):
+            with drag_lock:
+                drag["to"] = (float(dx), float(dy))
+                if drag["busy"]:
+                    return
+                drag["busy"] = True
+            later(apply_drag)
+
+        def drag_end(self):
+            drag["from"] = None
             save_soon()
 
         def front(self):

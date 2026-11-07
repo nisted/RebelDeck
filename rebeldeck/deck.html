@@ -84,7 +84,7 @@ body.single{--head:12px;--pad:4px}
 </style>
 </head>
 <body>
-<div id="head" class="pywebview-drag-region">
+<div id="head">
   <span id="dot" title="Companion"></span>
   <span class="name" id="name">{{NAME}}</span>
   <label class="sw" id="float" title="Float: keep this deck on top of other windows"><i></i>FLOAT</label>
@@ -174,7 +174,7 @@ function applyStyle() {
   const [r, g, b] = [1, 3, 5].map(o => parseInt(hex.substr(o, 2), 16));
   document.body.style.setProperty("--winbg", `rgba(${r},${g},${b},${a})`);
   document.body.classList.toggle("movable", !!style.movable);
-  $("head").classList.toggle("pywebview-drag-region", !!style.movable);
+  $("head").style.cursor = WIN && style.movable ? "move" : "";
   $("float").classList.toggle("on", !!style.float);
   $("name").textContent = style.name || $("name").textContent;
   if (style.name) document.title = style.name;
@@ -357,6 +357,22 @@ function snapToShape() {
   const w = innerWidth, h = heightFor(w);
   if (Math.abs(h - innerHeight) > 2) api().resize(w, h);
 }
+// moving the window by its header (RebelDeck moves it; the float switch and ✕ aren't handles)
+let moving = null, moveRaf = 0;
+$("head").addEventListener("pointerdown", e => {
+  if (!WIN || !style.movable || !api() || !api().drag_start || e.target.closest(".sw,.hbtn")) return;
+  e.preventDefault();
+  moving = {x: e.screenX, y: e.screenY};
+  $("head").setPointerCapture(e.pointerId);
+  api().drag_start();
+});
+$("head").addEventListener("pointermove", e => {
+  if (!moving || moveRaf) return;
+  const dx = e.screenX - moving.x, dy = e.screenY - moving.y;
+  moveRaf = requestAnimationFrame(() => { moveRaf = 0; if (moving) api().drag_to(dx, dy); });
+});
+for (const t of ["pointerup", "pointercancel"])
+  $("head").addEventListener(t, () => { if (moving && api()) api().drag_end(); moving = null; });
 let grip = null;
 $("grip").addEventListener("pointerdown", e => {
   if (!style.movable) return;
