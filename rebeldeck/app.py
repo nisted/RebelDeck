@@ -160,8 +160,12 @@ def browser_candidates():
     if WIN:
         for base in (os.environ.get(k, "") for k in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")):
             if base:
-                yield os.path.join(base, r"Microsoft\Edge\Application\msedge.exe")
                 yield os.path.join(base, r"Google\Chrome\Application\chrome.exe")
+        # Edge last: a new profile signs itself in to the Windows account and
+        # shows a sync screen once per deck window ("Got it" ends it)
+        for base in (os.environ.get(k, "") for k in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")):
+            if base:
+                yield os.path.join(base, r"Microsoft\Edge\Application\msedge.exe")
     elif MAC:
         yield "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         yield "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
@@ -205,7 +209,8 @@ class Windows:
         profile = os.path.join(settings.DIR, "windows", deck_id)
         try:
             p = subprocess.Popen([self.browser, f"--app={url}", f"--window-size={w},{h}", f"--user-data-dir={profile}",
-                                  "--no-first-run", "--no-default-browser-check", "--disable-features=Translate"],
+                                  "--no-first-run", "--no-default-browser-check", "--disable-sync",
+                                  "--disable-features=Translate,msImplicitSignin,msEdgeSyncConsent"],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=child_env())
         except OSError as e:
             log.warning("couldn't open the %s window: %s", d["name"], e)
