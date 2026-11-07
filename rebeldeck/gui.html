@@ -322,7 +322,9 @@ code{color:var(--cyan)}
     <h3>Known limits</h3>
     <ul><li>A press always ends with a release in Companion, even if you slide off the button first: Companion's Satellite API has no
       "cancel". Put actions you might want to abort on <i>press</i>, not release.</li>
-      <li>On Pi desktops that use Wayland, Float and remembered positions may not work (Wayland doesn't let apps do that).</li></ul>
+      <li>On Pi desktops that use Wayland, Float and remembered positions may not work (Wayland doesn't let apps do that).</li>
+      <li>On Linux, deck windows are drawn without WebKit's GPU paths (on a Pi those turn the window into streaks). To try them,
+      set <code>WEBKIT_DISABLE_DMABUF_RENDERER=0</code> and <code>WEBKIT_DISABLE_COMPOSITING_MODE=0</code> before starting RebelDeck.</li></ul>
     <h3>Where things live</h3>
     <p>Settings: <code>~/.config/rebeldeck/settings.json</code>. Log: <code>~/.config/rebeldeck/rebeldeck.log</code>.</p>
   </div>

@@ -48,7 +48,9 @@ service for phones and tablets.
   `http://<computer>:8091/api/decks/<deck-name>/qr.png`.
 
 Known limits: a press always ends in a release in Companion (the Satellite API has no "cancel"); on Wayland Pi
-desktops, float and remembered positions may not work.
+desktops, float and remembered positions may not work. On Linux, deck windows are drawn without WebKit's GPU paths
+(`WEBKIT_DISABLE_DMABUF_RENDERER=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`; set either to 0 to try them), and the tray icon
+is saved as named pictures in `~/.config/rebeldeck/tray-icons` so the Pi's taskbar can draw it.
 
 ## Updating
 

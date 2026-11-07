@@ -414,7 +414,76 @@ def test_rigs_hear_each_other():
         b.stop.set()
 
 
+def test_tray_icons_named_pngs():
+    """Linux tray: pictures become named .png files in our folder and the
+    taskbar gets an icon name, not pystray's extension-less temp file."""
+    import types
+    from PIL import Image
+    from rebeldeck import trayfix
+
+    calls = []
+
+    class FakeIndicator:
+        def set_icon_theme_path(self, p):
+            calls.append(("theme", p))
+
+        def set_icon(self, n):
+            calls.append(("icon", n))
+
+    class Icon:                                    # mimics pystray's AppIndicator Icon
+        def __init__(self, icon):
+            self.icon, self._icon_path, self._appindicator = icon, None, FakeIndicator()
+            self._update_icon()
+
+        def _update_icon(self):                    # as pystray does it
+            self._remove_fs_icon()
+            self._update_fs_icon()
+            self._appindicator.set_icon(self._icon_path)
+
+    Icon.__module__ = "pystray._appindicator"
+    folder = os.path.join(tempfile.mkdtemp(), "tray-icons")
+    green, red = Image.new("RGBA", (64, 64), "#50f078"), Image.new("RGBA", (64, 64), "#ff4d6d")
+    assert trayfix.install(types.SimpleNamespace(Icon=Icon), "RebelDeck", folder)
+    i = Icon(green)
+    first = i._icon_path
+    assert "/" not in first and first.startswith("rebeldeck-"), first
+    assert ("theme", folder) in calls and ("icon", first) in calls
+    assert os.path.exists(os.path.join(folder, first + ".png"))
+    i.icon = red
+    i._update_icon()
+    assert i._icon_path != first and os.path.exists(os.path.join(folder, i._icon_path + ".png"))
+    assert os.path.exists(os.path.join(folder, first + ".png"))   # kept: status lights come and go
+    open(os.path.join(folder, "rebeldeck-old.png"), "wb").close()
+    trayfix.tidy(folder, "RebelDeck", [green, red])
+    assert sorted(os.listdir(folder)) == sorted([first + ".png", i._icon_path + ".png"])
+    # other backends are left alone
+    Other = type("Icon", (), {})
+    Other.__module__ = "pystray._win32"
+    assert not trayfix.install(types.SimpleNamespace(Icon=Other), "RebelDeck", folder)
+
+
+def test_webkit_safe_mode():
+    from rebeldeck import app
+    saved = {k: os.environ.pop(k, None) for k in ("WEBKIT_DISABLE_DMABUF_RENDERER", "WEBKIT_DISABLE_COMPOSITING_MODE")}
+    was = app.LINUX
+    try:
+        app.LINUX = True
+        os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "0"       # someone's own choice stays
+        app.webkit_safe_mode()
+        assert os.environ["WEBKIT_DISABLE_DMABUF_RENDERER"] == "1"
+        assert os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] == "0"
+    finally:
+        app.LINUX = was
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
 if __name__ == "__main__":
+    test_tray_icons_named_pngs()
+    test_webkit_safe_mode()
+    print("ok: tray icons, WebKit safe mode")
     test_parse()
     test_old_settings_move_over()
     test_password()

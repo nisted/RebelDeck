@@ -469,6 +469,12 @@ class App:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f"Quit {APP}", lambda *_: self.quit()),
         )
+        if LINUX:
+            # the Pi's taskbar can't draw pystray's temp-file icons: give it named PNGs
+            from . import trayfix
+            folder = os.path.join(settings.DIR, "tray-icons")
+            if trayfix.install(pystray, APP, folder):
+                trayfix.tidy(folder, APP, self.icon_images.values())
         self.icon = pystray.Icon(APP, self.icon_images["none"], f"{APP} {LABEL}", menu)
 
         def refresh():
@@ -583,7 +589,17 @@ def already_running(port):
         return False
 
 
+def webkit_safe_mode():
+    """Linux: draw deck windows without WebKitGTK's GPU paths. On a Pi the GPU
+    (DMA-BUF) renderer turns the window into horizontal streaks (BD-1, 7 Nov).
+    setdefault, so anyone can still turn either back on (set it to 0)."""
+    if LINUX:
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+        os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+
+
 def main(argv):
+    webkit_safe_mode()                  # before any window; deck windows inherit it
     if "--deck-window" in argv:
         # its own quiet log: several processes sharing one rotating log file trip over each other on Windows
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s",
