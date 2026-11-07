@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#06070b">
-<title>RebelDeck</title>
+<title>{{NAME}}</title>
 <style>
 :root{
   --bg:#06070b;--key:#0e0b18;--edge:#2a1a4a;--purple:#b973ff;--lav:#e8d6ff;
@@ -47,7 +47,18 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--lav);font:12px/1
 "use strict";
 const deck = document.getElementById("deck"), lost = document.getElementById("lost"),
       why = document.getElementById("why"), dot = document.getElementById("status");
-let cols = 8, rows = 4, keys = [], serverUp = false, companion = "connecting";
+const DECK = "{{DECK}}", API = "/api/decks/" + DECK;
+let cols = {{COLS}}, rows = {{ROWS}}, keys = [], serverUp = false, companion = "connecting";
+
+let sized = false;
+function sizeWindow() {
+  // an app window opened by RebelDeck: fit it to the deck once, then leave it to the user
+  if (sized || !/[?&]window=1/.test(location.search) || !window.resizeTo) return;
+  sized = true;
+  const k = {{KEYPX}}, gap = 8, pad = 14;
+  const w = cols * k + (cols - 1) * gap + pad * 2, h = rows * k + (rows - 1) * gap + pad * 2;
+  try { window.resizeTo(w + (outerWidth - innerWidth), h + (outerHeight - innerHeight)); } catch (_) {}
+}
 
 function fit() {
   const w = innerWidth, h = innerHeight;
@@ -93,17 +104,20 @@ function showStatus() {
 }
 
 function state(s) {
+  if (s.gone) { why.textContent = "This deck's been removed. Off you pop."; lost.classList.add("on"); return; }
+  if (s.name) document.title = s.name;
   if (s.cols !== cols || s.rows !== rows || keys.length !== s.keys.length) {
     cols = s.cols; rows = s.rows; build(s.keys.length);
   }
   s.keys.forEach(paint);
+  sizeWindow();
   companion = s.status; showStatus();
 }
 
 // ---- taps: one finger per button, many fingers at once ----
 const held = new Map();   // pointerId -> key index
 function send(i, pressed) {
-  fetch("/api/press", {method: "POST", headers: {"Content-Type": "application/json"},
+  fetch(API + "/press", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({key: i, pressed})}).catch(() => {});
 }
 function release(id) {
@@ -131,13 +145,14 @@ addEventListener("resize", fit);
 
 // ---- live updates ----
 function connect() {
-  const es = new EventSource("/api/events");
+  const es = new EventSource(API + "/events");
   es.addEventListener("state", e => { serverUp = true; state(JSON.parse(e.data)); });
   es.addEventListener("key", e => paint(JSON.parse(e.data)));
   es.addEventListener("status", e => { companion = JSON.parse(e.data).status; showStatus(); });
   es.addEventListener("brightness", e => {
     deck.style.filter = `brightness(${Math.max(0.15, JSON.parse(e.data).value / 100)})`;
   });
+  es.addEventListener("reload", () => { es.close(); connect(); });
   es.onerror = () => { serverUp = false; showStatus(); };
   es.onopen = () => { serverUp = true; showStatus(); };
 }

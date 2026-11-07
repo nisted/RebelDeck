@@ -1,0 +1,117 @@
+name: Build RebelDeck
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'        # readme edits don't need a new build
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller pystray pillow
+      - name: Build number and icon
+        run: |
+          python -c "open('rebeldeck/_build.py','w').write('BUILD = \"${{ github.run_number }}\"\n')"
+          python icon.py
+      - name: Build
+        run: pyinstaller --noconfirm --onefile --windowed --name RebelDeck --icon icon.ico --hidden-import pystray._win32 --hidden-import rebeldeck.popup --add-data "rebeldeck/deck.html;rebeldeck" --add-data "rebeldeck/gui.html;rebeldeck" --add-data "rebeldeck/home.html;rebeldeck" run.py
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $ver = (Get-Content VERSION).Trim()
+          & $iscc "/DBuild=${{ github.run_number }}" "/DVersion=$ver" build\rebeldeck.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RebelDeck-Windows
+          path: |
+            dist/RebelDeck.exe
+            dist/RebelDeck-Setup.exe
+
+  mac:
+    runs-on: macos-latest          # Apple silicon Macs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller pystray pillow
+      - name: Build number and icon
+        run: |
+          printf 'BUILD = "%s"\n' "${{ github.run_number }}" > rebeldeck/_build.py
+          python icon.py
+      - name: Build
+        run: |
+          pyinstaller --noconfirm --windowed --name RebelDeck --icon icon.png \
+            --osx-bundle-identifier uk.co.nigelisted.rebeldeck \
+            --hidden-import pystray._darwin --hidden-import rebeldeck.popup \
+            --add-data "rebeldeck/deck.html:rebeldeck" --add-data "rebeldeck/gui.html:rebeldeck" --add-data "rebeldeck/home.html:rebeldeck" \
+            run.py
+          plist="dist/RebelDeck.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$plist"       # menu-bar only: no Dock icon
+          for kv in "CFBundleShortVersionString $(cat VERSION)" "CFBundleVersion ${{ github.run_number }}"; do
+            set -- $kv
+            /usr/libexec/PlistBuddy -c "Set :$1 $2" "$plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$plist"
+          done
+          codesign --force --deep -s - "dist/RebelDeck.app"
+          ditto -c -k --keepParent "dist/RebelDeck.app" RebelDeck-Mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RebelDeck-Mac
+          path: RebelDeck-Mac.zip
+
+  pi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          pip install pillow
+          python3 tests/test_rebeldeck.py
+      - name: Package for the Pi
+        run: |
+          mkdir -p pkg/rebeldeck
+          printf 'BUILD = "%s"\n' "${{ github.run_number }}" > rebeldeck/_build.py
+          cp -r rebeldeck pi run.py icon.py VERSION LICENSE README.md pkg/rebeldeck/
+          echo "${{ github.run_number }}" > pkg/rebeldeck/BUILD
+          find pkg -name __pycache__ -prune -exec rm -rf {} +
+          tar czf RebelDeck-Pi.tar.gz -C pkg rebeldeck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RebelDeck-Pi
+          path: RebelDeck-Pi.tar.gz
+
+  # Publish each build from main as the latest release: the app's
+  # "Update RebelDeck" menu item downloads and installs it from here.
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: [windows, mac, pi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp out/RebelDeck-Windows/RebelDeck.exe RebelDeck-Windows.exe
+          cp out/RebelDeck-Windows/RebelDeck-Setup.exe RebelDeck-Setup.exe
+          cp out/RebelDeck-Mac/RebelDeck-Mac.zip RebelDeck-Mac.zip
+          cp out/RebelDeck-Pi/RebelDeck-Pi.tar.gz RebelDeck-Pi.tar.gz
+          gh release create "build-${{ github.run_number }}" \
+            RebelDeck-Setup.exe RebelDeck-Windows.exe RebelDeck-Mac.zip RebelDeck-Pi.tar.gz \
+            --repo "${{ github.repository }}" --latest \
+            --title "RebelDeck v$(cat VERSION) (build ${{ github.run_number }})" \
+            --notes "Built from ${{ github.sha }}"

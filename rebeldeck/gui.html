@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#06070b">
+<title>RebelDeck</title>
+<style>
+:root{--bg:#06070b;--panel:#0b0c12;--card:#0e0b18;--edge:#2a1a4a;--hi:#b973ff;--purple:#b973ff;--pdim:#5500aa;
+  --lav:#e8d6ff;--text:#dfe2ee;--dim:#9aa0b4;--btn:#17102b;--green:#50f078;--red:#ff4d6d;--amber:#ffb84d;--cyan:#5adcff;
+  --head:"Archivo","Arial Narrow","Helvetica Neue",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --bh:52px;--nw:220px;--cut:10px}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 var(--mono);
+  background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgb(255 255 255/.018) 3px 4px)}
+a{color:var(--purple)}
+.cut{clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)))}
+/* top bar */
+#bar{position:fixed;top:0;left:0;right:0;height:var(--bh);z-index:20;display:flex;align-items:center;gap:12px;
+  padding:0 14px;background:var(--bg);border-bottom:2px solid var(--hi)}
+#burger{background:none;border:0;color:var(--lav);font-size:22px;cursor:pointer;padding:6px}
+#bar h1{margin:0;font:800 20px/1 var(--head);letter-spacing:.04em;color:var(--purple)}
+#bar .ver{color:var(--dim);font-size:12px}
+#bar .sp{flex:1}
+#light{width:12px;height:12px;border-radius:50%;background:var(--dim)}
+#light.connected{background:var(--green)}#light.disconnected,#light.refused{background:var(--red)}
+#light.connecting,#light.partly{background:var(--amber)}
+#bartext{color:var(--dim);font-size:12px;max-width:40vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* menu */
+#nav{position:fixed;top:var(--bh);bottom:0;left:0;width:var(--nw);background:var(--panel);border-right:1px solid var(--edge);
+  padding:12px 0;z-index:15;transition:transform .15s}
+body.navoff #nav{transform:translateX(-100%)}
+#nav a{display:block;padding:10px 18px;color:var(--text);text-decoration:none;font:600 15px/1.2 var(--head);letter-spacing:.03em}
+#nav a.on{color:var(--purple);background:var(--btn);border-left:3px solid var(--purple)}
+main{margin:var(--bh) 0 0 var(--nw);padding:22px clamp(14px,3vw,34px) 60px;max-width:1100px;transition:margin .15s}
+body.navoff main{margin-left:0}
+@media (max-width:760px){main{margin-left:0}body:not(.navoff) main{opacity:.25;pointer-events:none}}
+h2{font:800 24px/1.1 var(--head);color:var(--lav);margin:0 0 6px;letter-spacing:.02em}
+p.lead{color:var(--dim);margin:0 0 20px}
+section{display:none}section.on{display:block}
+/* cards, fields, buttons */
+.card{background:var(--card);border:1px solid var(--edge);padding:16px 18px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}
+label{color:var(--dim);font-size:13px}
+input[type=text],input[type=number],input[type=password],select{background:#07060c;color:var(--lav);border:1px solid var(--edge);
+  font:14px var(--mono);padding:7px 9px;min-width:0}
+input[type=number]{width:76px}
+input:focus,select:focus{outline:1px solid var(--purple)}
+button{background:var(--btn);color:var(--lav);border:1px solid var(--pdim);font:700 13px/1 var(--head);letter-spacing:.05em;
+  padding:9px 14px;cursor:pointer;text-transform:uppercase}
+button:hover{border-color:var(--purple)}
+button.primary{background:var(--pdim);border-color:var(--purple)}
+button.danger{border-color:#7a1f30;color:#ffc2cc}
+button.armed{background:#5a0f1e;border-color:var(--red)}
+button:disabled{opacity:.4;cursor:default}
+.deckhead{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.deckhead input.name{font:700 17px var(--head);flex:1;min-width:160px}
+.badge{font-size:12px;padding:2px 8px;border:1px solid var(--edge);color:var(--dim)}
+.badge.connected{color:var(--green);border-color:#1f6b35}.badge.disconnected,.badge.refused{color:var(--red);border-color:#7a1f30}
+.badge.connecting{color:var(--amber)}
+.preview{display:grid;gap:3px;margin:10px 0 4px;max-width:420px}
+.preview i{aspect-ratio:1;background:#17102b;border:1px solid var(--edge);border-radius:3px}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--text)}
+.switch input{width:18px;height:18px;accent-color:var(--purple)}
+.set{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:10px 18px;align-items:center}
+@media (max-width:600px){.set{grid-template-columns:1fr}}
+.hint{color:var(--dim);font-size:12px}
+pre#log{background:#07060c;border:1px solid var(--edge);padding:12px;max-height:60vh;overflow:auto;font-size:12px;white-space:pre-wrap}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--pdim);color:#fff;padding:10px 16px;
+  font:600 14px var(--head);display:none;z-index:40}
+#lost{position:fixed;inset:0;display:none;place-items:center;background:rgb(6 7 11/.9);z-index:50;text-align:center;padding:20px}
+#lost.on{display:grid}#lost b{display:block;color:var(--purple);font:800 24px var(--head);margin-bottom:8px}
+#notice{display:none;background:var(--pdim);color:#fff;padding:10px 14px;margin-bottom:16px;cursor:pointer;font-weight:600}
+code{color:var(--cyan)}
+</style>
+</head>
+<body>
+<header id="bar">
+  <button id="burger" title="Show or hide the menu">☰</button>
+  <h1>REBELDECK</h1><span class="ver">v{{VERSION}}</span>
+  <span class="sp"></span>
+  <span id="bartext" title="Companion connection"></span><span id="light" title="Green: all decks connected. Amber: getting there. Red: no Companion."></span>
+</header>
+<nav id="nav">
+  <a href="#decks" data-p="decks" title="Make, size, rename, show and hide your decks">Decks</a>
+  <a href="#connection" data-p="connection" title="Where Companion lives">Companion</a>
+  <a href="#settings" data-p="settings" title="Ports, passwords and other knobs">Settings</a>
+  <a href="#update" data-p="update" title="Check for and install a newer RebelDeck">Update</a>
+  <a href="#log" data-p="log" title="What RebelDeck's been up to">Log</a>
+  <a href="#help" data-p="help" title="How it all hangs together">Help</a>
+</nav>
+<main>
+<div id="notice" title="Click to update"></div>
+
+<section id="p-decks">
+  <h2>Decks</h2>
+  <p class="lead">Each deck turns up in Companion's Surfaces list as its own surface. Size it, name it, pop it open. Easy.</p>
+  <div id="decks"></div>
+  <div class="card cut">
+    <div class="row"><b style="font:700 16px var(--head);color:var(--lav)">New deck</b></div>
+    <div class="row">
+      <input type="text" id="newname" placeholder="Name (e.g. FOH Deck)" title="What Companion calls it">
+      <select id="newpreset" title="Pick a Stream Deck size, or go custom"></select>
+      <input type="number" id="newcols" min="1" max="32" value="8" title="Columns (1-32)"> ×
+      <input type="number" id="newrows" min="1" max="32" value="4" title="Rows (1-32)">
+      <button class="primary" id="adddeck" title="Make it and open it">Add deck</button>
+    </div>
+  </div>
+</section>
+
+<section id="p-connection">
+  <h2>Companion</h2>
+  <p class="lead">Where's Companion? Same computer is <code>127.0.0.1</code>. Another one: its network address.</p>
+  <div class="card cut set">
+    <label for="companion_host">Companion address</label>
+    <input type="text" id="companion_host" title="Address of the computer running Companion" data-k="companion_host">
+    <label for="companion_port">Satellite port</label>
+    <div><input type="number" id="companion_port" min="1" max="65535" data-k="companion_port" title="Companion's Satellite port: 16622 unless someone's been fiddling">
+      <span class="hint">Default 16622</span></div>
+    <label for="button_px">Button picture size</label>
+    <div><input type="number" id="button_px" min="36" max="400" data-k="button_px" title="Pixels per button that Companion draws. Bigger is crisper, a bit more work.">
+      <span class="hint">px, 36-400 (default 144)</span></div>
+    <label>Status</label><div id="connstatus" class="hint"></div>
+  </div>
+  <button class="primary" data-save="connection" title="Save and reconnect every deck">Save and reconnect</button>
+</section>
+
+<section id="p-settings">
+  <h2>Settings</h2>
+  <p class="lead">The knobs and switches. Most save the moment you hit Save.</p>
+  <div class="card cut set">
+    <label>Start at login</label><label class="switch"><input type="checkbox" data-k="start_at_login"> Start RebelDeck when you log in</label>
+    <label>Deck windows</label><label class="switch"><input type="checkbox" data-k="open_windows_at_start"> Reopen the deck windows that were showing</label>
+    <label for="key_px">Deck window button size</label>
+    <div><input type="number" id="key_px" min="32" max="400" data-k="key_px" title="How big a deck window opens: pixels per button"> <span class="hint">px (default 96)</span></div>
+    <label for="popup_size">Pop-out size</label>
+    <div><input type="number" id="popup_size" min="50" max="300" data-k="popup_size" title="Make the pop-out bigger or smaller"> <span class="hint">% (default 100)</span></div>
+    <label>Phones and tablets</label><label class="switch"><input type="checkbox" data-k="web_network"> Let other devices on the network open decks</label>
+    <label for="web_port">Port</label>
+    <div><input type="number" id="web_port" min="1024" max="65535" data-k="web_port" title="Port for deck pages and this GUI"> <span class="hint">default 8091 (needs a restart)</span></div>
+    <label for="web_password">Password for other devices</label>
+    <div><input type="password" id="web_password" placeholder="(none)" autocomplete="new-password"
+      title="Other devices need it for this GUI and changes. Decks and button presses stay open. This computer never needs it.">
+      <span class="hint" id="pwhint"></span></div>
+    <label>Companion Sync</label><label class="switch"><input type="checkbox" data-k="sync_decks_with_companion_sync">
+      Let my decks travel between rigs with Companion Sync</label>
+  </div>
+  <button class="primary" data-save="settings">Save</button>
+</section>
+
+<section id="p-update">
+  <h2>Update</h2>
+  <p class="lead">Fresh builds land on GitHub. One click and you're on the latest.</p>
+  <div class="card cut">
+    <div class="row">You're on <b id="cur"></b>.</div>
+    <div class="row" id="latest"></div>
+    <div class="row"><button class="primary" id="doupdate" title="Download, install and reopen">Update now</button>
+      <button id="checkupdate">Check again</button></div>
+  </div>
+</section>
+
+<section id="p-log">
+  <h2>Log</h2>
+  <p class="lead">The last 200 lines. Handy when something's sulking.</p>
+  <button id="reloadlog">Refresh</button>
+  <pre id="log"></pre>
+</section>
+
+<section id="p-help">
+  <h2>Help</h2>
+  <div class="card cut">
+    <p><b>What is it?</b> Virtual Stream Decks for Companion: in a window, on a Pi screen, or on any phone or tablet on your network.
+      Based on Joseph Adams' ScreenDeck, given a good shake.</p>
+    <p><b>Companion side:</b> nothing to install. RebelDeck uses Companion's Satellite API (Companion 3.5 or later).
+      Each deck appears in <b>Surfaces</b>; give it a page there like any Stream Deck.</p>
+    <p><b>Phones and tablets:</b> open <span id="lanurl"></span> and pick a deck. On iPhone/iPad, Share → Add to Home Screen for full-screen.</p>
+    <p><b>Three ways in:</b> the tray icon (quick stuff), the pop-out (connection and showing/hiding decks), and this page (everything).</p>
+    <p><b>Where settings live:</b> <code>~/.config/rebeldeck/settings.json</code>.</p>
+  </div>
+</section>
+</main>
+<div id="toast"></div>
+<div id="lost"><div><b>I've got a bad feeling about this...</b><span class="hint">Lost contact with RebelDeck. Trying again…</span></div></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let presets = [], status = null, conf = {};
+const api = async (method, url, body) => {
+  const r = await fetch(url, {method, headers: {"Content-Type": "application/json"}, body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.json();
+};
+function toast(t) { const e = $("#toast"); e.textContent = t; e.style.display = "block"; clearTimeout(e._t); e._t = setTimeout(() => e.style.display = "none", 2600); }
+
+// ---- menu and pages ----
+try { if (localStorage.getItem("rd-nav") === "off" || (innerWidth < 760 && localStorage.getItem("rd-nav") !== "on")) document.body.classList.add("navoff"); } catch (_) {}
+$("#burger").onclick = () => { const off = document.body.classList.toggle("navoff"); try { localStorage.setItem("rd-nav", off ? "off" : "on"); } catch (_) {} };
+function show() {
+  const p = (location.hash || "#decks").slice(1);
+  $$("section").forEach(s => s.classList.toggle("on", s.id === "p-" + p));
+  $$("#nav a").forEach(a => a.classList.toggle("on", a.dataset.p === p));
+  if (innerWidth < 760) document.body.classList.add("navoff");
+  if (p === "log") loadLog();
+  if (p === "update") checkUpdate(false);
+}
+addEventListener("hashchange", show);
+
+// ---- decks ----
+function presetOptions(sel, c, r) {
+  sel.innerHTML = presets.map(p => `<option value="${p.columns}x${p.rows}">${p.name} (${p.columns}×${p.rows})</option>`).join("") +
+    `<option value="custom">Custom</option>`;
+  const m = presets.find(p => p.columns == c && p.rows == r);
+  sel.value = m ? `${c}x${r}` : "custom";
+}
+function preview(el, c, r) {
+  el.style.gridTemplateColumns = `repeat(${c}, 1fr)`;
+  el.style.maxWidth = Math.min(420, c * 46) + "px";
+  el.innerHTML = "<i></i>".repeat(Math.min(c * r, 32 * 32));
+}
+function deckCard(d) {
+  const el = document.createElement("div");
+  el.className = "card cut";
+  el.innerHTML = `
+    <div class="deckhead">
+      <input type="text" class="name" title="The name Companion shows for this deck">
+      <span class="badge ${d.status}" title="Companion connection for this deck">${d.status}</span>
+    </div>
+    <div class="row">
+      <select class="preset" title="Stream Deck sizes, or Custom"></select>
+      <input type="number" class="cols" min="1" max="32" title="Columns (1-32)"> ×
+      <input type="number" class="rows" min="1" max="32" title="Rows (1-32)">
+      <button class="primary apply" title="Save the name and size. Companion sees it as a fresh deck size.">Save</button>
+    </div>
+    <div class="preview"></div>
+    <div class="row">
+      <label class="switch local" title="Show or hide this deck's window on the RebelDeck computer"><input type="checkbox" class="showing"> Window open</label>
+      <a class="open" target="_blank" title="Open this deck in a browser tab">Open here ↗</a>
+      <span class="hint lan"></span>
+      <span style="flex:1"></span>
+      <button class="danger del" title="Remove this deck from RebelDeck and Companion">Delete</button>
+    </div>`;
+  el.querySelector(".name").value = d.name;
+  const cols = el.querySelector(".cols"), rows = el.querySelector(".rows"), sel = el.querySelector(".preset"), pv = el.querySelector(".preview");
+  cols.value = d.columns; rows.value = d.rows;
+  presetOptions(sel, d.columns, d.rows); preview(pv, d.columns, d.rows);
+  sel.onchange = () => { if (sel.value !== "custom") { const [c, r] = sel.value.split("x"); cols.value = c; rows.value = r; } preview(pv, +cols.value, +rows.value); };
+  const typed = () => { const m = presets.find(p => p.columns == cols.value && p.rows == rows.value); sel.value = m ? `${cols.value}x${rows.value}` : "custom"; preview(pv, Math.max(1, Math.min(32, +cols.value || 1)), Math.max(1, Math.min(32, +rows.value || 1))); };
+  cols.oninput = typed; rows.oninput = typed;
+  el.querySelector(".apply").onclick = async () => {
+    try { await api("PUT", "/api/decks/" + d.id, {name: el.querySelector(".name").value, columns: +cols.value, rows: +rows.value}); toast("Saved. Companion's catching up."); refresh(); }
+    catch (e) { toast("Didn't save: " + e.message); }
+  };
+  const sh = el.querySelector(".showing");
+  sh.checked = !!d.showing;
+  sh.onchange = async () => { try { await api("PUT", "/api/decks/" + d.id, {showing: sh.checked}); } catch (e) { toast(e.message); } };
+  if (status && !status.local) el.querySelector(".local").style.display = "none";
+  el.querySelector(".open").href = "/deck/" + d.id;
+  if (status && status.lan) el.querySelector(".lan").textContent = "Phones: " + status.lan + "deck/" + d.id;
+  const del = el.querySelector(".del");
+  del.onclick = async () => {
+    if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "Sure? Tap again"; setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete"; }, 4000); return; }
+    try { await api("DELETE", "/api/decks/" + d.id); toast("Deck gone. Poof."); refresh(); } catch (e) { toast(e.message); }
+  };
+  return el;
+}
+async function refresh() {
+  try {
+    status = await api("GET", "/api/status");
+    $("#lost").classList.remove("on");
+  } catch (_) { $("#lost").classList.add("on"); return; }
+  const s = status.status;
+  $("#light").className = s === "partly connected" ? "partly" : s;
+  $("#bartext").textContent = s === "connected" ? `Companion ${status.companion || ""} at ${status.companion_at}` :
+    s === "no decks" ? "No decks yet" : `${s} · Companion at ${status.companion_at}`;
+  $("#connstatus").textContent = $("#bartext").textContent;
+  if (status.lan) $("#lanurl").textContent = status.lan;
+  const box = $("#decks");
+  if (!document.activeElement || !box.contains(document.activeElement)) {
+    box.textContent = "";
+    status.decks.forEach(d => box.appendChild(deckCard(d)));
+    if (!status.decks.length) box.innerHTML = "<div class='card cut hint'>No decks. Make one below.</div>";
+  }
+  const n = $("#notice");
+  if (status.restart_needed) { n.style.display = "block"; n.textContent = "Restart RebelDeck to use the new port settings."; n.onclick = null; }
+  else if (status.update && status.update.newer) { n.style.display = "block"; n.textContent = `Update available: ${status.update.latest}. Click to update.`; n.onclick = () => location.hash = "#update"; }
+  else n.style.display = "none";
+}
+$("#adddeck").onclick = async () => {
+  try { await api("POST", "/api/decks", {name: $("#newname").value || undefined, columns: +$("#newcols").value, rows: +$("#newrows").value});
+        $("#newname").value = ""; toast("Deck made. Find it in Companion's Surfaces."); refresh(); }
+  catch (e) { toast("Didn't work: " + e.message); }
+};
+$("#newpreset").onchange = () => { const v = $("#newpreset").value; if (v !== "custom") { const [c, r] = v.split("x"); $("#newcols").value = c; $("#newrows").value = r; } };
+
+// ---- settings ----
+async function loadSettings() {
+  conf = await api("GET", "/api/settings");
+  $$("[data-k]").forEach(el => { const v = conf[el.dataset.k]; if (el.type === "checkbox") el.checked = !!v; else el.value = v; });
+  $("#pwhint").textContent = conf.has_password ? "A password is set. Type a new one to change it, or tick clear." : "No password: anyone on the network can change settings.";
+  if (conf.has_password && !$("#clearpw")) {
+    $("#pwhint").insertAdjacentHTML("afterend", ` <label class="switch"><input type="checkbox" id="clearpw"> clear</label>`);
+  }
+}
+$$("[data-save]").forEach(b => b.onclick = async () => {
+  const sec = b.closest("section"), body = {};
+  sec.querySelectorAll("[data-k]").forEach(el => body[el.dataset.k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? +el.value : el.value));
+  if (sec.id === "p-settings") {
+    const pw = $("#web_password").value;
+    if (pw) body.web_password = pw;
+    else if ($("#clearpw") && $("#clearpw").checked) body.web_password = "";
+  }
+  try { await api("PUT", "/api/settings", body); $("#web_password").value = ""; toast("Saved."); loadSettings(); refresh(); }
+  catch (e) { toast("Didn't save: " + e.message); }
+});
+
+// ---- update ----
+async function checkUpdate(force) {
+  try {
+    const u = await api("GET", "/api/update" + (force ? "?force=1" : ""));
+    $("#cur").textContent = u.current || ("v" + "{{VERSION}}");
+    $("#latest").textContent = u.newer ? `Newer: ${u.latest}. Lovely.` : (u.latest ? `That's the latest (${u.latest}).` : "Couldn't reach GitHub just now.");
+    $("#doupdate").disabled = !u.newer || !u.can_update;
+    if (u.newer && !u.can_update) $("#latest").textContent += " Update from the computer RebelDeck runs on.";
+  } catch (e) { $("#latest").textContent = "Couldn't check: " + e.message; }
+}
+$("#checkupdate").onclick = () => checkUpdate(true);
+$("#doupdate").onclick = async () => { try { await api("POST", "/api/update"); toast("Updating… RebelDeck will reopen in a moment."); } catch (e) { toast(e.message); } };
+
+// ---- log ----
+async function loadLog() { try { $("#log").textContent = (await api("GET", "/api/log")).lines.join("\n"); } catch (e) { $("#log").textContent = e.message; } }
+$("#reloadlog").onclick = loadLog;
+
+(async () => {
+  try { presets = await api("GET", "/api/presets"); } catch (_) {}
+  presetOptions($("#newpreset"), 8, 4);
+  await refresh(); try { await loadSettings(); } catch (_) {}
+  show();
+  setInterval(refresh, 3000);
+})();
+</script>
+</body>
+</html>

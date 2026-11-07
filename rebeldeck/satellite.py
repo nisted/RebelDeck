@@ -1,5 +1,8 @@
 """A Companion Satellite API client for one deck.
 
+Each deck has its own connection, so it shows up in Companion as its own
+surface and can be added, resized or removed without disturbing the others.
+
 Connects over TCP, registers the deck, keeps button states and passes taps
 back. Reconnects on its own if Companion goes away. Runs in its own thread;
 listeners are called with ("key", n) when a button changes and ("status", s)
@@ -44,9 +47,12 @@ class Key:
 
 
 class Deck:
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.cols, self.rows = int(cfg["columns"]), int(cfg["rows"])
+    def __init__(self, cfg, deck):
+        self.cfg = cfg                      # app settings: Companion's address, picture size
+        self.deck = deck                    # this deck: id, name, columns, rows, device_id
+        self.id = deck["id"]
+        self.device_id = deck["device_id"]
+        self.cols, self.rows = int(deck["columns"]), int(deck["rows"])
         self.keys = [Key() for _ in range(self.cols * self.rows)]
         self.status = "connecting"
         self.companion_version = ""
@@ -68,10 +74,11 @@ class Deck:
 
     def press(self, key, pressed):
         if 0 <= key < len(self.keys):
-            self._send(f"KEY-PRESS DEVICEID={self.cfg['device_id']} KEY={key} PRESSED={'true' if pressed else 'false'}")
+            self._send(f"KEY-PRESS DEVICEID={self.device_id} KEY={key} PRESSED={'true' if pressed else 'false'}")
 
     def snapshot(self):
         return {
+            "id": self.id, "name": self.deck["name"],
             "cols": self.cols, "rows": self.rows, "status": self.status,
             "companion": self.companion_version, "brightness": self.brightness,
             "keys": [self.key_json(i) for i in range(len(self.keys))],
@@ -127,6 +134,7 @@ class Deck:
             if self._stop.is_set():
                 break
             self._set_status("disconnected")
+            self.companion_version = ""
             self._stop.wait(delay)
             delay = min(delay * 2, 10)               # 1, 2, 4, 8, 10, 10 … seconds
 
@@ -173,7 +181,8 @@ class Deck:
     def _add_device(self):
         c = self.cfg
         parts = [
-            "ADD-DEVICE", f"DEVICEID={c['device_id']}", f"PRODUCT_NAME={quote(c['deck_name'])}",
+            "ADD-DEVICE", f"DEVICEID={self.device_id}", f"PRODUCT_NAME={quote(self.deck['name'])}",
+            f"SERIAL={quote('rebeldeck:' + self.id)}",
             f"KEYS_TOTAL={len(self.keys)}", f"KEYS_PER_ROW={self.cols}",
             f"BITMAPS={int(c['button_px'])}", "COLORS=hex", "TEXT=true", "TEXT_STYLE=true",
             "BRIGHTNESS=true",
@@ -197,13 +206,13 @@ class Deck:
             else:
                 log.error("Companion refused the deck: %s", a.get("MESSAGE", line))
                 self._set_status("refused")
-        elif cmd == "KEY-STATE" and a.get("DEVICEID") == self.cfg["device_id"]:
+        elif cmd == "KEY-STATE" and a.get("DEVICEID") == self.device_id:
             self._key_state(a)
-        elif cmd == "KEYS-CLEAR" and a.get("DEVICEID") == self.cfg["device_id"]:
+        elif cmd == "KEYS-CLEAR" and a.get("DEVICEID") == self.device_id:
             for i, k in enumerate(self.keys):
                 k.__init__()
                 self._emit("key", i)
-        elif cmd == "BRIGHTNESS" and a.get("DEVICEID") == self.cfg["device_id"]:
+        elif cmd == "BRIGHTNESS" and a.get("DEVICEID") == self.device_id:
             try:
                 self.brightness = int(a.get("VALUE", 100))
             except ValueError:

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#06070b">
+<title>RebelDeck</title>
+<style>
+:root{--bg:#06070b;--panel:#0e0b18;--edge:#2a1a4a;--purple:#b973ff;--lav:#e8d6ff;--dim:#8a84a3;
+  --green:#50f078;--red:#ff4d6d;--amber:#ffb84d;
+  --head:"Archivo","Arial Narrow","Helvetica Neue",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--lav);font:15px/1.5 var(--mono);
+  background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgb(255 255 255/.018) 3px 4px);
+  padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 32px max(16px,env(safe-area-inset-left))}
+h1{font:800 clamp(26px,6vw,40px)/1 var(--head);letter-spacing:.02em;margin:0 0 4px;color:var(--purple)}
+p.sub{margin:0 0 22px;color:var(--dim)}
+.list{display:grid;gap:12px;max-width:640px}
+a.deck{display:flex;align-items:center;gap:14px;padding:16px 18px;text-decoration:none;color:var(--lav);
+  background:var(--panel);border:1px solid var(--edge);
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px))}
+a.deck:active{background:#1b1230}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--dim)}
+.dot.connected{background:var(--green)}.dot.disconnected,.dot.refused{background:var(--red)}.dot.connecting{background:var(--amber)}
+.name{font:700 18px/1.2 var(--head);flex:1}
+.size{color:var(--dim);font-size:13px}
+.empty{color:var(--dim)}
+footer{margin-top:28px;color:var(--dim);font-size:13px}
+footer a{color:var(--purple)}
+</style>
+</head>
+<body>
+<h1>RebelDeck</h1>
+<p class="sub">Pick a deck. Tap away. Companion does the rest.</p>
+<div class="list" id="list"><div class="empty">Rummaging for decks…</div></div>
+<footer>On an iPhone or iPad: <b>Share → Add to Home Screen</b> and it opens full-screen like a proper app.
+  · <a href="/gui">Settings</a></footer>
+<script>
+"use strict";
+async function load() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    const list = document.getElementById("list");
+    list.textContent = "";
+    if (!st.decks.length) { list.innerHTML = "<div class='empty'>No decks yet. Make one in Settings.</div>"; return; }
+    for (const d of st.decks) {
+      const a = document.createElement("a");
+      a.className = "deck"; a.href = "/deck/" + d.id;
+      a.innerHTML = `<span class="dot ${d.status}"></span><span class="name"></span><span class="size">${d.columns}×${d.rows}</span>`;
+      a.querySelector(".name").textContent = d.name;
+      list.appendChild(a);
+    }
+  } catch (_) {
+    document.getElementById("list").innerHTML = "<div class='empty'>Can't reach RebelDeck. Is it running?</div>";
+  }
+}
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

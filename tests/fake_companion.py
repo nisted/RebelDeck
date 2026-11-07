@@ -13,7 +13,8 @@ class FakeCompanion:
         self.port = self.srv.getsockname()[1]
         self.png, self.caps = png, caps
         self.lines = []
-        self.conn = None
+        self.conns = []          # every connection
+        self.by_dev = {}         # device id -> its connection
         self.added = threading.Event()
         self.pressed = []
         threading.Thread(target=self._accept, daemon=True).start()
@@ -24,11 +25,12 @@ class FakeCompanion:
                 c, _ = self.srv.accept()
             except OSError:
                 return
-            self.conn = c
+            self.conns.append(c)
             threading.Thread(target=self._serve, args=(c,), daemon=True).start()
 
-    def send(self, line):
-        self.conn.sendall((line + "\n").encode())
+    def send(self, line, dev=None):
+        c = self.by_dev.get(dev) or self.conns[-1]
+        c.sendall((line + "\n").encode())
 
     def _serve(self, c):
         c.sendall(b"BEGIN CompanionVersion=5.1.2 ApiVersion=1.16.0\n")
@@ -56,6 +58,7 @@ class FakeCompanion:
     def _reply(self, c, line):
         if line.startswith("ADD-DEVICE"):
             dev = line.split("DEVICEID=")[1].split()[0]
+            self.by_dev[dev] = c
             c.sendall(f"ADD-DEVICE OK DEVICEID={dev}\n".encode())
             self.added.set()
         elif line.startswith("PING"):
@@ -66,15 +69,16 @@ class FakeCompanion:
     def key_rgb(self, dev, key, side, rgb=(255, 0, 0), text="GO"):
         raw = bytes(rgb) * (side * side)
         self.send(f"KEY-STATE DEVICEID={dev} KEY={key} TYPE=BUTTON BITMAP={base64.b64encode(raw).decode()} "
-                  f"COLOR=#ff0000 TEXT={base64.b64encode(text.encode()).decode()} PRESSED=0")
+                  f"COLOR=#ff0000 TEXT={base64.b64encode(text.encode()).decode()} PRESSED=0", dev)
 
     def drop(self):
-        if self.conn:
+        for c in self.conns:
             try:
-                self.conn.shutdown(socket.SHUT_RDWR)   # a real hang-up, as when Companion quits
+                c.shutdown(socket.SHUT_RDWR)   # a real hang-up, as when Companion quits
             except OSError:
                 pass
-            self.conn.close()
+            c.close()
+        self.conns, self.by_dev = [], {}
 
     def close(self):
         try:
