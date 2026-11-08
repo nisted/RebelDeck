@@ -119,6 +119,55 @@ pre#log{background:#07060c;border:1px solid var(--edge);padding:12px;max-height:
 #lost{position:fixed;inset:0;display:none;place-items:center;background:rgb(6 7 11/.9);z-index:50;text-align:center;padding:20px}
 #lost.on{display:grid}#lost b{display:block;color:var(--purple);font:800 24px var(--head);margin-bottom:8px}
 #notice{display:none;background:var(--pdim);color:#fff;padding:10px 14px;margin-bottom:16px;cursor:pointer;font-weight:600}
+
+/* deck cards: one line, opening into tabs */
+.deck{background:var(--card);border:1px solid var(--edge);margin-bottom:12px}
+.deck .line{display:flex;align-items:center;gap:14px;padding:12px 16px;cursor:pointer;flex-wrap:wrap}
+.deck .dname{font:700 18px var(--head);color:var(--lav);flex:1;min-width:120px}
+.deck .chev{color:var(--dim);font-size:16px;width:14px}
+.thumb{display:grid;gap:1px}
+.thumb i{display:block;background:#17102b;border-radius:1px;background-size:cover}
+.thumb i.gap{background:transparent}
+.thumb i img{display:none}
+.deck .open{display:none}
+.deck.expanded .open{display:block}
+.tabs{display:flex;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);padding:0 16px;flex-wrap:wrap}
+.tabs a{padding:10px 18px;font:700 14px var(--head);color:var(--dim);letter-spacing:.04em;border-bottom:3px solid transparent;cursor:pointer}
+.tabs a.on{color:var(--lav);border-bottom-color:var(--purple)}
+.tab{display:none;padding:16px 16px 4px}
+.tab.on{display:block}
+.tab .row input.name{font:700 15px var(--head);width:220px}
+.seg.tool{flex-wrap:wrap}
+.toolhint{margin-bottom:8px}
+.preview{display:grid;gap:6px;width:100%;max-width:none;margin:4px 0 8px}
+.preview i{position:relative;aspect-ratio:1;background:#17102b;border:1px solid #000;border-radius:8%;cursor:pointer;overflow:hidden;
+  display:grid;place-items:center;font-style:normal}
+.preview i img{position:absolute;inset:0;width:100%;height:100%}
+.preview i b{position:relative;font:700 calc(var(--cw,60px) * .15)/1.1 Arial,sans-serif;text-align:center;white-space:pre-wrap;padding:4%}
+.preview i:hover{outline:2px solid var(--purple);outline-offset:1px}
+.preview i.rotary{border-radius:50%}
+.preview i.rotary::before{content:"";position:absolute;inset:4%;border-radius:50%;border:3px solid rgb(185 115 255/.75);border-top-color:#fff;z-index:2;color:transparent}
+.preview i.fader::before{content:"";position:absolute;left:44%;width:12%;top:10%;bottom:10%;border-radius:3px;background:linear-gradient(var(--purple),var(--pdim));z-index:2}
+.preview i.blocked::after{content:"✕";position:absolute;inset:0;display:grid;place-items:center;background:rgb(29 11 18/.65);color:var(--red);font:800 calc(var(--cw,60px) * .45) var(--head);z-index:3}
+.preview i.out{outline:2px dashed var(--purple);outline-offset:-3px}
+.preview i.out::after{content:"↗";position:absolute;top:3%;right:6%;color:#fff;font-size:calc(var(--cw,60px) * .2);z-index:3}
+.preview i.strip{aspect-ratio:var(--ratio,2);align-self:center}
+.preview i.gap{background:transparent!important;border:1px dashed #3a2d58}
+.preview i.gap img,.preview i.gap b{display:none}
+.row.under{justify-content:space-between}
+.field{display:grid;grid-template-columns:150px 1fr;gap:14px 18px;align-items:center;max-width:780px}
+.field>span:nth-child(odd){color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.srv{border:1px solid var(--edge);padding:9px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.srv.on{border-color:var(--purple);background:#17102b}
+.srv.faded{opacity:.5;cursor:default}
+.srv.addnew{border-style:dashed}
+.srv .dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
+.srv .dot.connected{background:var(--green)}.srv .dot.disconnected,.srv .dot.refused{background:var(--red)}.srv .dot.connecting{background:var(--amber)}
+.share{display:grid;grid-template-columns:1fr 180px;gap:24px;align-items:start}
+@media (max-width:760px){.share{grid-template-columns:1fr}}
+.qrbox{text-align:center}.qrbox img{width:170px;height:170px;background:#fff;padding:8px;image-rendering:pixelated}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 16px 16px;flex-wrap:wrap}
+.foot .note{flex:1}
 code{color:var(--cyan)}
 .help h3{margin-top:22px}.help p,.help li{color:var(--text)}.help li{margin:4px 0}
 </style>
@@ -146,7 +195,7 @@ code{color:var(--cyan)}
 
 <section id="p-decks">
   <h2>Decks</h2>
-  <p class="lead">Each deck turns up in Companion's Surfaces list as its own surface. Size it, name it, style it, pop it open.</p>
+  <p class="lead">Each deck turns up in Companion's Surfaces list as its own surface. Click a deck to open it up.</p>
   <div id="decks"></div>
   <div class="card cut">
     <h3 style="margin-top:0">New deck</h3>
@@ -198,9 +247,9 @@ code{color:var(--cyan)}
   <div class="card cut">
     <div class="row"><span class="label">Address</span><span class="addr"><code id="lanaddr">…</code>
       <button class="small" data-copy="#lanaddr" title="Copy the address, to paste into WhatsApp, email or wherever">Copy</button></span></div>
-    <div class="row"><span class="label">By name</span><span class="addr"><code id="localname">…</code>
-      <button class="small" data-copy="#localname" title="Copy">Copy</button></span>
-      <span class="hint">Works on iPhones, iPads and Macs; Android is hit and miss.</span></div>
+    <div class="row"><span class="label">Backup (IP)</span><span class="addr"><code id="ipaddr">…</code>
+      <button class="small" data-copy="#ipaddr" title="Copy">Copy</button></span>
+      <span class="hint">Works from anything, if the name doesn't.</span></div>
     <div class="row"><span class="label">QR code</span><span class="hint">Point a phone's camera at it. No typing.</span></div>
     <div class="qr on"><img id="homeqr" alt="QR code for the pick-a-deck page"></div>
     <p class="hint">On iPhone or iPad: open a deck, then <b>Share → Add to Home Screen</b> and it opens full-screen like an app.</p>
@@ -232,6 +281,13 @@ code{color:var(--cyan)}
     <label for="popup_size">Pop-out size</label>
     <div><input type="number" id="popup_size" min="50" max="300" data-k="popup_size" title="Make the pop-out bigger or smaller"> <span class="hint">% (default 100)</span></div>
     <span>Browsers</span><label class="sw" title="Let phones, tablets and other computers open decks. Off: this computer only."><input type="checkbox" data-k="web_network"><i></i>Let other devices on the network open decks</label>
+    <label for="link_address">Links and QR codes use</label>
+    <div><select id="link_address" data-k="link_address" title="The address in every link, short address and QR code RebelDeck gives out">
+      <option value="local">The computer's .local name (e.g. k-2so.local)</option>
+      <option value="name">The computer's name (e.g. k-2so)</option>
+      <option value="ip">The IP address (e.g. 192.168.1.20)</option></select>
+      <span class="hint">.local works on iPhones, iPads and Macs; Android is hit and miss. The plain name usually only works from other
+        Windows PCs. The IP address works from anything but can change. The IP is always shown as a backup.</span></div>
     <span>Other rigs</span><label class="sw" title="List decks from other RebelDecks on the network on the pick-a-deck page"><input type="checkbox" data-k="find_other_rigs"><i></i>Show decks from other RebelDecks</label>
     <label for="web_port">Port</label>
     <div><input type="number" id="web_port" min="1024" max="65535" data-k="web_port" title="Port for deck pages and this GUI"> <span class="hint">default 8091 (needs a restart)</span></div>
@@ -280,11 +336,11 @@ code{color:var(--cyan)}
       Each deck appears in <b>Surfaces</b> as a Satellite surface with an id starting <code>rebeldeck</code>.
       Give it a page, offset and the rest there, like any Stream Deck. Renaming or resizing a deck keeps its Companion setup.</p>
     <h3>Deck windows</h3>
-    <ul><li><b>Window open</b> switch: opens or closes the deck's window on this computer.</li>
+    <ul><li><b>Visible</b>: opens or closes the deck's window on this computer.</li>
       <li><b>Float</b>: the window stays on top of everything else. Also on the window's own header.</li>
-      <li><b>Movable</b>: off locks the window where it is (no dragging, no resizing).</li>
+      <li><b>Locked</b>: on, the window stays where it is (no dragging, no resizing).</li>
       <li>Drag the window by its header. Resize it with the corner grip: it keeps the deck's shape, so no letterboxing. It remembers where it was.</li>
-      <li><b>Colour</b> and <b>see-through</b>: the window's background. On Windows, see-through fades the whole window (buttons too); on Macs and Pis just the background.</li>
+      <li><b>Colour</b> and <b>Transparency</b>: the window's background. On Windows, transparency fades the whole window (buttons too); on Macs and Pis just the background. <b>Reset</b> puts a window back to its starting size and place.</li>
       <li>Companion's surface brightness dims the buttons only, never the window.</li>
       <li><b>Identify</b> (here or in the tray) flashes the deck's name and brings it to the front, so you can find it.</li></ul>
     <h3>The button editor</h3>
@@ -353,7 +409,8 @@ async function copy(text) {
 document.addEventListener("click", e => { const b = e.target.closest("[data-copy]"); if (b) copy($(b.dataset.copy).textContent); });
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const slug = n => String(n).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "deck";
-const deckBase = () => status && status.info && status.info.lan ? status.info.lan.replace(/\/$/, "") : location.origin;
+const deckBase = () => status && status.info && (status.info.link || status.info.lan) ?
+  (status.info.link || status.info.lan).replace(/\/$/, "") : location.origin;
 
 // ---- menu and pages ----
 try { if (localStorage.getItem("rd-nav") === "off" || (innerWidth < 760 && localStorage.getItem("rd-nav") !== "on")) document.body.classList.add("navoff"); } catch (_) {}
@@ -388,216 +445,233 @@ function put(d, body, msg) {
     .catch(e => { toast("Didn't save: " + e.message); refresh(true); });
 }
 
+// What Companion is showing on every deck's buttons, kept live by one stream
+const keyStore = {}, openDeck = {}, deckTab = {};
+try { Object.assign(openDeck, JSON.parse(localStorage.getItem("rd-open") || "{}"));
+      Object.assign(deckTab, JSON.parse(localStorage.getItem("rd-tab") || "{}")); } catch (_) {}
+function remember() { try { localStorage.setItem("rd-open", JSON.stringify(openDeck)); localStorage.setItem("rd-tab", JSON.stringify(deckTab)); } catch (_) {} }
+function face(el, k) {
+  const img = el.querySelector("img"), b = el.querySelector("b");
+  if (!k) { if (img) img.removeAttribute("src"); if (b) b.textContent = ""; el.style.background = ""; return; }
+  if (img) { if (k.image) { if (img.src !== k.image) img.src = k.image; img.style.display = ""; } else { img.removeAttribute("src"); img.style.display = "none"; } }
+  if (b) { b.textContent = k.image ? "" : (k.text || ""); b.style.color = k.textColor || "#fff"; }
+  if (k.image && !img) el.style.background = `center / cover no-repeat url("${k.image}")`;     // thumbnails
+  else el.style.background = k.image ? "#000" : (k.color && k.color !== "#000000" ? k.color : "");
+}
+function paintKey(deckId, k) {
+  (keyStore[deckId] = keyStore[deckId] || [])[k.i] = k;
+  document.querySelectorAll(`[data-deck="${deckId}"] [data-i="${k.i}"]`).forEach(el => face(el, k));
+}
+function listen() {
+  const es = new EventSource("/api/events");
+  es.addEventListener("states", e => JSON.parse(e.data).decks.forEach(st => st.keys.forEach(k => paintKey(st.id, k))));
+  es.addEventListener("key", e => { const k = JSON.parse(e.data); paintKey(k.deck, k); });
+  es.onerror = () => { es.close(); setTimeout(listen, 3000); };
+}
+
 function deckCard(d) {
   const el = document.createElement("div");
-  el.className = "card cut";
+  el.className = "deck cut";
+  el.dataset.deck = d.id;
+  const visible = status && status.windows ? !!status.windows[d.id] : d.showing;
   el.innerHTML = `
-    <div class="deckhead">
-      <span class="num" title="This deck's number: its short address is /${d.n}">${d.n}</span>
-      <input type="text" class="name" title="The name Companion shows, and this deck's web address. Must be unique.">
-      <span class="badge ${d.status}" title="This deck's connection to ${esc(d.server_name)} (${esc(d.companion_at)})">${d.status}</span>
+    <div class="line" title="Click to open or close this deck's settings">
+      <span class="num" title="Deck ${d.n}: its short address is /${d.n}">${d.n}</span>
+      <span class="dname"></span>
+      <span class="thumb" title="What's on its buttons right now"></span>
+      <span class="badge ${d.status}" title="Its connection to ${esc(d.server_name)} (${esc(d.companion_at)})">${d.status}</span>
+      <label class="sw vis local" title="Show or hide this deck's window on the RebelDeck computer"><input type="checkbox"><i></i>Visible</label>
       <button class="small ident" title="Flash this deck's name wherever it's open, and bring its window to the front">Identify</button>
+      <span class="chev">▸</span>
     </div>
-    <div class="note rename">Heads up: renaming changes this deck's address to <code class="newaddr"></code>. Bookmarks and home-screen icons for it will need updating.</div>
-    <div class="row">
-      <span class="label">Size</span>
-      <select class="preset" title="Stream Deck sizes, or Custom"></select>
-      <input type="number" class="cols" min="1" max="32" title="Columns (1-32)"> ×
-      <input type="number" class="rows" min="1" max="32" title="Rows (1-32)">
-      <button class="primary apply" title="Save the name and size. Companion keeps this deck's setup.">Save name and size</button>
-    </div>
-    <div class="row">
-      <span class="label">Window</span>
-      <label class="sw local" title="Open or close this deck's window on the RebelDeck computer"><input type="checkbox" class="showing"><i></i>Window open</label>
-      <label class="sw" title="Keep the window on top of everything else"><input type="checkbox" class="float"><i></i>Float</label>
-      <label class="sw" title="Off: the window is locked where it is (no dragging or resizing)"><input type="checkbox" class="movable"><i></i>Movable</label>
-    </div>
-    <div class="row">
-      <span class="label">Look</span>
-      <label title="Window background colour">Colour <input type="color" class="colour"></label>
-      <label title="How see-through the window's background is. On Windows the whole window fades.">See-through
-        <input type="range" class="transp" min="0" max="90" step="5"> <span class="tv hint"></span></label>
-    </div>
-    <div class="row">
-      <span class="label">Companion</span>
-      <label class="sw" title="Off: this deck uses the default Companion. On: pick one just for this deck."><input type="checkbox" class="own"><i></i>Own Companion</label>
-      <select class="server" title="Which Companion this deck talks to"></select>
-      <span class="hint usingsrv"></span>
-    </div>
-    <div class="inline-add">
-      <input type="text" class="nsname" placeholder="Name" title="A name you'll recognise">
-      <input type="text" class="nshost" placeholder="Address (e.g. 192.168.1.50)" title="The computer running Companion">
-      <input type="number" class="nsport" value="16622" min="1" max="65535" title="Satellite port: 16622 unless changed in Companion">
-      <button class="primary small nssave">Save</button><button class="small nscancel">Cancel</button>
-      <button class="small nsfind" title="Look for Companions on the network and pick one">Find…</button>
-      <div class="found nsfound" style="width:100%"></div>
-    </div>
-    <div class="row">
-      <span class="label">Buttons</span>
-      <div class="seg mode" title="Clickable: all work. Unclickable: show only. Hybrid: you choose each one.">
-        <button data-m="clickable">Clickable</button><button data-m="unclickable">Unclickable</button><button data-m="hybrid">Hybrid</button></div>
-      <span class="hybridtools" style="display:none">
-        <button class="small selall" title="Make every button unclickable (red ✕)">Select all</button>
-        <button class="small deselall" title="Make every button clickable">Deselect all</button></span>
-    </div>
-    <div class="row tools">
-      <span class="label">Click to</span>
-      <div class="radios tool" title="What clicking a button in the layout below does">
-        <label title="Hybrid only: switch a button between working and ✕"><input type="radio" value="click">Clickable on/off</label>
-        <label title="Make it a plain button"><input type="radio" value="button">Button</label>
-        <label title="A dial: drag or scroll to turn, tap to push"><input type="radio" value="rotary">Rotary</label>
-        <label title="A fader, Intech Grid style"><input type="radio" value="fader">Fader</label>
-        <label title="An empty space: nothing drawn, nothing to press (as Companion leaves on a + XL)"><input type="radio" value="gap">Gap</label>
-        <label title="A wide, short button, like a Stream Deck + touch strip segment"><input type="radio" value="strip">Strip</label>
-        <label title="Pop the button out into its own little window, or put it back"><input type="radio" value="breakout">Break out</label>
+    <div class="open">
+      <div class="tabs">
+        <a data-t="layout" title="Name, size and what each button is">Layout</a>
+        <a data-t="window" title="How its window looks and behaves">Window</a>
+        <a data-t="companion" title="Which Companion it talks to">Companion</a>
+        <a data-t="share" title="Its addresses and QR code, for phones, iPads and other computers">Share</a>
       </div>
-    </div>
-    <div class="row"><span class="label"></span><span class="hint toolhint"></span>
-      <label class="stripshape" title="Strip buttons: how wide their pictures are compared with their height (2 = twice as wide)">Strip shape
-        <input type="number" class="ratio" min="1" max="8" step="0.5"> : 1</label></div>
-    <div class="preview" title="This deck's layout. Click buttons to edit them with the tool above."></div>
-    <div class="row addr">
-      <span class="label">Browsers</span>
-      <a class="open" target="_blank" title="Open this deck in a browser tab, at its network address">Open here ↗</a>
-      <span class="hint">(any device: phones, iPads, etc.)</span>
-      <code class="url"></code>
-      <button class="small copyurl" title="Copy the address, to paste into WhatsApp, email or wherever">Copy</button>
-      <img class="qrmini" alt="QR code" title="QR code for this deck: click to make it bigger">
-      <span class="hint">or</span> <code class="short"></code>
-      <button class="small copyshort" title="Copy the short address">Copy</button>
-      <span style="flex:1"></span>
-      <button class="danger del" title="Remove this deck from RebelDeck and Companion">Delete</button>
-    </div>
-    <div class="note renum"></div>
-    <div class="qr" title="Click to make it small again"><img alt="QR code"></div>`;
 
-  // name and size
-  const name = el.querySelector(".name"), cols = el.querySelector(".cols"), rows = el.querySelector(".rows"),
-        sel = el.querySelector(".preset"), pv = el.querySelector(".preview");
+      <div class="tab" data-t="layout">
+        <div class="row">
+          <input type="text" class="name" title="The name Companion shows, and this deck's web address. Must be unique.">
+          <select class="preset" title="Stream Deck sizes (with their dials, strip and gaps), or Custom"></select>
+          <input type="number" class="cols" min="1" max="32" title="Columns (1-32)"> ×
+          <input type="number" class="rows" min="1" max="32" title="Rows (1-32)">
+          <button class="primary apply" title="Save the name and size. Companion keeps this deck's setup.">Save</button>
+        </div>
+        <div class="note rename">Heads up: renaming changes this deck's address to <code class="newaddr"></code>. Bookmarks and home-screen icons for it will need updating.</div>
+        <div class="row">
+          <div class="seg mode" title="Clickable: all work. Unclickable: show only. Hybrid: you choose each one.">
+            <button data-m="clickable">Clickable</button><button data-m="unclickable">Unclickable</button><button data-m="hybrid">Hybrid</button></div>
+          <span class="hint" style="margin-left:auto">Make it:</span>
+        <div class="seg tool" title="What clicking a button below does">
+          <button data-t="click" title="Hybrid: switch a button between working and ✕">✕ On/off</button>
+          <button data-t="button" title="A plain button">Button</button>
+          <button data-t="rotary" title="A dial: drag or scroll to turn, tap to push">Rotary</button>
+          <button data-t="fader" title="A fader, Intech Grid style">Fader</button>
+          <button data-t="strip" title="A wide, short button, like a Stream Deck + touch strip segment">Strip</button>
+          <button data-t="gap" title="An empty space: nothing drawn, nothing to press">Gap</button>
+          <button data-t="breakout" title="Pop the button out into its own little window, or put it back">Break out</button>
+        </div></div>
+        <div class="hint toolhint"></div>
+        <div class="preview" title="This deck as Companion's drawing it. Click buttons to edit them with the tool above."></div>
+        <div class="row under">
+          <label class="stripshape" title="Strip buttons: how wide their pictures are compared with their height (2 = twice as wide)">Strip shape
+            <input type="number" class="ratio" min="1" max="8" step="0.5"> : 1</label>
+          <span class="hybridtools">
+            <button class="small selall" title="Make every button unclickable (✕)">Select all</button>
+            <button class="small deselall" title="Make every button clickable">Deselect all</button></span>
+        </div>
+      </div>
+
+      <div class="tab" data-t="window">
+        <div class="field">
+          <span>Visible</span><label class="sw local" title="Show or hide its window on the RebelDeck computer"><input type="checkbox" class="showing"><i></i>Open on this computer</label>
+          <span>Float</span><label class="sw" title="Keep the window on top of everything else"><input type="checkbox" class="float"><i></i>Stay on top of other windows</label>
+          <span>Locked</span><label class="sw" title="On: the window can't be moved or resized"><input type="checkbox" class="locked"><i></i>Can't be moved or resized</label>
+          <span>Colour</span><label title="Window background colour"><input type="color" class="colour"> <span class="hint">Behind the buttons</span></label>
+          <span>Transparency</span><label title="How see-through the window's background is. On Windows the whole window fades.">
+            <input type="range" class="transp" min="0" max="90" step="5"> <span class="tv hint"></span></label>
+          <span>Size and place</span><span><span class="hint geo"></span>
+            <button class="small reset" title="Put the window back to its starting size and position (handy if it's ended up off-screen)">Reset</button></span>
+        </div>
+      </div>
+
+      <div class="tab" data-t="companion">
+        <div class="field">
+          <span>Companion</span><label class="sw" title="Off: this deck uses the default Companion. On: pick one just for this deck."><input type="checkbox" class="own"><i></i>Use its own Companion (off: the default)</label>
+        </div>
+        <p class="hint srvhint"></p>
+        <div class="srvlist"></div>
+        <div class="srv addnew" title="Add another Companion"><span style="color:var(--purple)">＋</span><b>Add new…</b><span class="hint">or find Companions on the network</span></div>
+        <div class="inline-add">
+          <input type="text" class="nsname" placeholder="Name" title="A name you'll recognise">
+          <input type="text" class="nshost" placeholder="Address (e.g. 192.168.1.50)" title="The computer running Companion">
+          <input type="number" class="nsport" value="16622" min="1" max="65535" title="Satellite port: 16622 unless changed in Companion">
+          <button class="primary small nssave">Save</button><button class="small nscancel">Cancel</button>
+          <button class="small nsfind" title="Look for Companions on the network and pick one">Find…</button>
+          <div class="found nsfound" style="width:100%"></div>
+        </div>
+      </div>
+
+      <div class="tab" data-t="share">
+        <div class="share">
+          <div class="field" style="grid-template-columns:120px 1fr">
+            <span>Address</span><span class="addr"><code class="url"></code><button class="small copyurl">Copy</button>
+              <a class="open" target="_blank"><button class="small" title="Open it in a browser tab">Open ↗</button></a></span>
+            <span>Short</span><span class="addr"><code class="short"></code><button class="small copyshort">Copy</button></span>
+            <span>Backup (IP)</span><span class="addr"><code class="ipurl"></code><button class="small copyip">Copy</button></span>
+          </div>
+          <div class="qrbox"><img class="qrbig" alt="QR code"><div class="hint">Point a phone at it</div></div>
+        </div>
+        <p class="hint">Any device with a browser: phones, iPads, other computers. On an iPhone or iPad, <b>Share → Add to Home Screen</b>.</p>
+        <p class="hint">On a Companion button: Generic HTTP → <b>Image from URL</b> → <code class="qrurl"></code></p>
+      </div>
+
+      <div class="foot"><div class="note renum"></div><span></span>
+        <button class="danger del" title="Remove this deck from RebelDeck and Companion">Delete deck</button></div>
+    </div>`;
+  const q = sel => el.querySelector(sel);
+  q(".dname").textContent = d.name;
+  if (status && !status.local) el.querySelectorAll(".local").forEach(x => x.style.display = "none");
+
+  // the one line: open/close, live thumbnail, Visible, Identify
+  const setOpen = on => { el.classList.toggle("expanded", on); q(".chev").textContent = on ? "▾" : "▸"; };
+  setOpen(!!openDeck[d.id]);
+  q(".line").onclick = e => {
+    if (e.target.closest("label,button,input")) return;
+    openDeck[d.id] = !openDeck[d.id]; remember(); setOpen(openDeck[d.id]); if (openDeck[d.id]) sizePreview();
+  };
+  const types = Object.assign({}, d.key_types);
+  const kind = i => types[String(i)] || "button";
+  const th = q(".thumb"), cell = Math.max(3, Math.min(8, Math.floor(80 / d.columns)));
+  th.style.gridTemplateColumns = `repeat(${d.columns}, ${cell}px)`;
+  for (let i = 0; i < d.columns * d.rows; i++) {
+    const c = document.createElement("i"); c.dataset.i = i; c.style.height = cell + "px";
+    if (kind(i) === "gap") c.className = "gap";
+    th.appendChild(c);
+  }
+  const vis = q(".vis input"), visW = q(".showing");
+  vis.checked = visW.checked = visible;
+  [vis, visW].forEach(x => x.onchange = () => { vis.checked = visW.checked = x.checked; put(d, {showing: x.checked}); });
+  q(".ident").onclick = () => api("POST", `/api/decks/${d.id}/identify`).then(() => toast("Look for the flashing deck.")).catch(e => toast(e.message));
+
+  // tabs
+  const showTab = t => { el.querySelectorAll(".tabs a").forEach(a => a.classList.toggle("on", a.dataset.t === t));
+                         el.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.t === t));
+                         if (t === "layout") sizePreview(); };
+  el.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { deckTab[d.id] = a.dataset.t; remember(); showTab(a.dataset.t); });
+
+  // ---- Layout: name and size
+  const name = q(".name"), cols = q(".cols"), rows = q(".rows"), sel = q(".preset");
   name.value = d.name; cols.value = d.columns; rows.value = d.rows;
   presetOptions(sel, d.columns, d.rows);
   name.oninput = () => {
-    const changed = slug(name.value) !== d.slug;
-    el.querySelector(".rename").style.display = changed ? "block" : "none";
-    el.querySelector(".newaddr").textContent = deckBase() + "/deck/" + slug(name.value);
+    q(".rename").style.display = slug(name.value) !== d.slug ? "block" : "none";
+    q(".newaddr").textContent = deckBase() + "/deck/" + slug(name.value);
   };
   sel.onchange = () => { sel.dataset.picked = "1"; if (sel.value !== "custom") { const [c, r] = sel.value.split("x"); cols.value = c; rows.value = r; } };
   const typed = () => { const m = presets.find(p => p.columns == cols.value && p.rows == rows.value); sel.value = m ? `${cols.value}x${rows.value}` : "custom"; };
   cols.oninput = typed; rows.oninput = typed;
-  el.querySelector(".apply").onclick = () => {
+  q(".apply").onclick = () => {
     const body = {name: name.value, columns: +cols.value, rows: +rows.value};
     const p = sel.value !== "custom" && presets.find(x => `${x.columns}x${x.rows}` === sel.value && x.name === sel.selectedOptions[0].dataset.name);
-    if (p && (Object.keys(p.key_types).length || sel.dataset.picked === "1")) {
-      body.key_types = p.key_types;                  // the preset's layout (dials, strip, gaps)
-    }
+    if (p && (Object.keys(p.key_types).length || sel.dataset.picked === "1")) body.key_types = p.key_types;
     put(d, body, "Saved. Companion's catching up.").then(() => refresh(true));
   };
 
-  // switches
-  const sw = (cls, key, msg) => { const i = el.querySelector(cls); i.checked = !!d[key];
-    i.onchange = () => put(d, {[key]: i.checked}, msg); };
-  sw(".showing", "showing");
-  // the window's real state, where the app reports it (it may still be opening, or have failed)
-  if (status && status.windows) el.querySelector(".showing").checked = !!status.windows[d.id];
-  sw(".float", "float");
-  sw(".movable", "movable");
-  if (status && !status.local) el.querySelector(".local").style.display = "none";
-
-  // look
-  const col = el.querySelector(".colour"), tr = el.querySelector(".transp"), tv = el.querySelector(".tv");
-  col.value = d.colour; tr.value = d.transparency; tv.textContent = d.transparency + "%";
-  col.onchange = () => put(d, {colour: col.value});
-  tr.oninput = () => tv.textContent = tr.value + "%";
-  tr.onchange = () => put(d, {transparency: +tr.value}, "Reopen the window if the see-through change doesn't show.");
-
-  // Companion server
-  const own = el.querySelector(".own"), srv = el.querySelector(".server"), add = el.querySelector(".inline-add");
-  own.checked = !!d.own_server;
-  serverOptions(srv, d.server || d.server_used);
-  srv.style.display = own.checked ? "" : "none";
-  el.querySelector(".usingsrv").textContent = own.checked ? "" : `Using the default: ${d.server_name} (${d.companion_at})`;
-  own.onchange = () => {
-    srv.style.display = own.checked ? "" : "none";
-    if (!own.checked) { add.classList.remove("on"); put(d, {own_server: false}).then(() => refresh(true)); }
-    else if (srv.value !== "__new") put(d, {own_server: true, server: srv.value}).then(() => refresh(true));
-  };
-  srv.onchange = () => {
-    if (srv.value === "__new") { add.classList.add("on"); add.querySelector(".nsname").focus(); return; }
-    add.classList.remove("on");
-    put(d, {own_server: true, server: srv.value}, "Switched. Reconnecting.").then(() => refresh(true));
-  };
-  add.querySelector(".nsfind").onclick = async () => {
-    const box = add.querySelector(".nsfound");
-    box.textContent = "Looking…";
-    try {
-      const found = await api("GET", "/api/companions/scan");
-      box.textContent = found.length ? "" : "None found. Is Companion running, and on the same network?";
-      for (const f of found) {
-        const b = document.createElement("button");
-        b.className = "small"; b.textContent = `${f.name} (${f.host}) · Companion ${f.version}`;
-        b.onclick = () => { add.querySelector(".nsname").value = f.name === "This computer" ? "This computer's Companion" : f.name;
-                            add.querySelector(".nshost").value = f.host; add.querySelector(".nsport").value = f.port; };
-        box.appendChild(b);
-      }
-    } catch (e) { box.textContent = e.message; }
-  };
-  add.querySelector(".nscancel").onclick = () => { add.classList.remove("on"); serverOptions(srv, d.server || d.server_used); };
-  add.querySelector(".nssave").onclick = async () => {
-    try {
-      const s = await api("POST", "/api/servers", {name: add.querySelector(".nsname").value || "Companion",
-        host: add.querySelector(".nshost").value, port: +add.querySelector(".nsport").value || 16622});
-      await put(d, {own_server: true, server: s.id}, `${s.name} added, and this deck's using it.`);
-      refresh(true);
-    } catch (e) { toast("Didn't add: " + e.message); }
-  };
-
-  // buttons: modes, tools and the layout editor
-  let mode = d.click_mode, blocked = new Set(d.blocked), types = Object.assign({}, d.key_types), out = new Set(d.breakout);
-  const toolBox = el.querySelector(".tool"), hint = el.querySelector(".toolhint");
-  // the chosen tool sticks (cards are redrawn as things change)
+  // ---- Layout: the button editor, drawn over the real buttons
+  let mode = d.click_mode, blocked = new Set(d.blocked), out = new Set(d.breakout);
+  const pv = q(".preview"), hint = q(".toolhint"), ratio = q(".ratio");
   const tool = {get value() { return toolChoice[d.id] || (mode === "hybrid" ? "click" : "button"); },
                 set value(v) { toolChoice[d.id] = v; }};
-  const ratio = el.querySelector(".ratio");
+  const hints = {click: "Click a button to switch it between working and ✕.",
+    button: "Click a button to make it a plain button again.",
+    rotary: "Click a button to make it a dial: drag or scroll to turn, tap to push.",
+    fader: "Click a button to make it a fader. It sends turn steps and a 0-127 variable, like the Intech Grid.",
+    strip: "Click a button to make it a strip button: wide and short, like a + touch strip segment.",
+    gap: "Click a button to leave an empty space there (Button brings it back).",
+    breakout: "Click a button to pop it into its own little window. Click again to put it back."};
   ratio.value = d.strip_ratio;
   ratio.onchange = () => put(d, {strip_ratio: +ratio.value || 2}, "Saved. Companion re-registers the deck.").then(() => refresh(true));
-  const hints = {click: "Hybrid only: click a button to switch it between working and ✕.",
-    button: "Click a button to make it a plain button again.",
-    rotary: "Drag left/right or scroll to turn; tap to push.",
-    fader: "Drag up/down. Sends turn steps and a 0-127 variable, like the Intech Grid.",
-    gap: "Click a button to leave an empty space there (click again with Button to bring it back).",
-    strip: "Click a button to make it a strip button (wide and short, like a + touch strip segment).",
-    breakout: "Click a button to pop it into its own little window. Click again to put it back."};
   function drawModes() {
     el.querySelectorAll(".mode button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
-    el.querySelector(".hybridtools").style.display = mode === "hybrid" ? "" : "none";
     if (mode !== "hybrid" && tool.value === "click") tool.value = "button";
-    toolBox.querySelectorAll("label").forEach(l => {
-      const r = l.querySelector("input"), off = r.value === "click" && mode !== "hybrid";
-      r.name = "tool-" + d.id; r.disabled = off; r.checked = r.value === tool.value;
-      l.classList.toggle("on", r.checked); l.classList.toggle("off", off);
+    el.querySelectorAll(".tool button").forEach(b => {
+      b.classList.toggle("on", b.dataset.t === tool.value);
+      b.style.display = b.dataset.t === "click" && mode !== "hybrid" ? "none" : "";
     });
     hint.textContent = hints[tool.value];
-    el.querySelector(".stripshape").style.display = Object.values(types).includes("strip") ? "" : "none";
+    q(".hybridtools").style.display = mode === "hybrid" ? "" : "none";
+    q(".stripshape").style.display = Object.values(types).includes("strip") ? "" : "none";
   }
-  toolBox.addEventListener("change", e => { tool.value = e.target.value; drawModes(); });
   function drawPreview() {
     pv.style.gridTemplateColumns = `repeat(${d.columns}, 1fr)`;
-    pv.style.maxWidth = Math.min(520, d.columns * 52) + "px";
     pv.style.setProperty("--ratio", d.strip_ratio);
     pv.innerHTML = "";
+    const store = keyStore[d.id] || [];
+    // rows of only strip buttons (and gaps) are short, gaps included
+    const shortRow = r => { const ts = [...Array(d.columns).keys()].map(c => kind(r * d.columns + c)).filter(t => t !== "gap");
+                            return ts.length && ts.every(t => t === "strip"); };
     for (let i = 0; i < d.columns * d.rows; i++) {
       const c = document.createElement("i");
       c.dataset.i = i;
-      const t = types[String(i)] || "button", row = Math.floor(i / d.columns);
-      c.className = [t !== "button" ? t : "", out.has(i) ? "out" : "",
+      c.innerHTML = "<img alt=''><b></b>";
+      const t = kind(i), row = Math.floor(i / d.columns);
+      c.className = [t !== "button" ? t : "", out.has(i) ? "out" : "", t === "gap" && shortRow(row) ? "strip" : "",
         t !== "gap" && (mode === "unclickable" || (mode === "hybrid" && blocked.has(i))) ? "blocked" : ""].join(" ");
-      // Companion's own numbering where Companion has said (page/row/column), else row/column
       const loc = d.locations && d.locations[i];
       c.title = (loc ? `Button ${loc}` : `Row ${row}, column ${i % d.columns}`) + `: ${t}` +
-        (out.has(i) ? ", broken out" : "") +
-        (c.classList.contains("blocked") ? ", unclickable" : "");
+        (out.has(i) ? ", broken out" : "") + (c.classList.contains("blocked") ? ", unclickable" : "");
+      face(c, store[i]);
       pv.appendChild(c);
     }
+    sizePreview();
+  }
+  function sizePreview() {
+    const w = pv.clientWidth;
+    if (w) pv.style.setProperty("--cw", (w / d.columns) + "px");
   }
   let saveT = null;
   function saveButtons(msg) {
@@ -608,10 +682,12 @@ function deckCard(d) {
     if (b.dataset.m === mode) return;
     mode = b.dataset.m;
     if (mode === "hybrid") { blocked = new Set([...Array(d.columns * d.rows).keys()]); tool.value = "click"; }
-    drawModes(); drawPreview(); saveButtons(mode === "hybrid" ? "Hybrid: every button's off. Click the ones you want working." : "Saved.");
+    drawModes(); drawPreview();
+    saveButtons(mode === "hybrid" ? "Hybrid: every button's off. Click the ones you want working." : "Saved.");
   });
-  el.querySelector(".selall").onclick = () => { blocked = new Set([...Array(d.columns * d.rows).keys()]); drawPreview(); saveButtons(); };
-  el.querySelector(".deselall").onclick = () => { blocked = new Set(); drawPreview(); saveButtons(); };
+  el.querySelectorAll(".tool button").forEach(b => b.onclick = () => { tool.value = b.dataset.t; drawModes(); });
+  q(".selall").onclick = () => { blocked = new Set([...Array(d.columns * d.rows).keys()]); drawPreview(); saveButtons(); };
+  q(".deselall").onclick = () => { blocked = new Set(); drawPreview(); saveButtons(); };
   pv.onclick = e => {
     const c = e.target.closest("i");
     if (!c) return;
@@ -620,44 +696,110 @@ function deckCard(d) {
     else if (t === "breakout") { out.has(i) ? out.delete(i) : out.add(i); }
     else if (t === "button") delete types[String(i)];
     else types[String(i)] = t;
-    if (t === "strip") drawModes();
-    drawPreview();
+    drawModes(); drawPreview();
     saveButtons(["rotary", "fader", "button", "gap", "strip"].includes(t) ? "Saved. Companion re-registers the deck for the new layout." : null);
   };
   drawModes(); drawPreview();
 
-  // addresses
-  const url = deckBase() + "/deck/" + d.slug;
-  el.querySelector(".url").textContent = url;
-  el.querySelector(".open").href = url;
-  el.querySelector(".copyurl").onclick = () => copy(url);
-  const short = deckBase() + "/" + d.n;
-  el.querySelector(".short").textContent = short;
-  el.querySelector(".copyshort").onclick = () => copy(short);
-  const qr = el.querySelector(".qr"), mini = el.querySelector(".qrmini");
-  mini.src = qr.querySelector("img").src = `/api/decks/${d.id}/qr.png`;
-  mini.onclick = () => qr.classList.toggle("on");
-  qr.onclick = () => qr.classList.remove("on");
-  el.querySelector(".ident").onclick = () => api("POST", `/api/decks/${d.id}/identify`).then(() => toast("Look for the flashing deck.")).catch(e => toast(e.message));
+  // ---- Window
+  const sw = (cls, key, invert) => { const i = q(cls); i.checked = invert ? !d[key] : !!d[key];
+    i.onchange = () => put(d, {[key]: invert ? !i.checked : i.checked}); };
+  sw(".float", "float");
+  sw(".locked", "movable", true);
+  const col = q(".colour"), tr = q(".transp"), tv = q(".tv");
+  col.value = d.colour; tr.value = d.transparency; tv.textContent = d.transparency + "%";
+  col.onchange = () => put(d, {colour: col.value});
+  tr.oninput = () => tv.textContent = tr.value + "%";
+  tr.onchange = () => put(d, {transparency: +tr.value});
+  const g = d.window || {};
+  q(".geo").textContent = g.w ? `${g.w} × ${g.h} at ${g.x}, ${g.y}, remembered ` : "Starting size and place ";
+  q(".reset").onclick = () => put(d, {window: {}}, "Back to its starting size and place.").then(() => refresh(true));
 
-  const del = el.querySelector(".del"), renum = el.querySelector(".renum");
+  // ---- Companion
+  const own = q(".own"), list = q(".srvlist"), add = q(".inline-add");
+  own.checked = !!d.own_server;
+  function drawServers() {
+    q(".srvhint").textContent = own.checked ? "Pick the Companion this deck talks to:" : "Using the default:";
+    list.innerHTML = "";
+    for (const s of status.servers) {
+      const used = s.id === d.server_used;
+      const r = document.createElement("div");
+      r.className = "srv" + (used ? " on" : "") + (own.checked || used ? "" : " faded");
+      r.title = own.checked ? "Use this Companion for this deck" : "Flip the switch to pick one just for this deck";
+      r.innerHTML = `<span class="dot ${s.status}"></span><b></b><span class="hint">${esc(s.host)}:${s.port}${s.companion ? " · Companion " + esc(s.companion) : ""}</span>
+        <span style="flex:1"></span><span class="hint">${s.default ? "default" : ""}</span>`;
+      r.querySelector("b").textContent = s.name;
+      r.onclick = () => { if (!own.checked || used) return; put(d, {own_server: true, server: s.id}, `Switched to ${s.name}. Reconnecting.`).then(() => refresh(true)); };
+      list.appendChild(r);
+    }
+  }
+  drawServers();
+  own.onchange = () => {
+    drawServers();
+    if (!own.checked) put(d, {own_server: false}).then(() => refresh(true));
+    else put(d, {own_server: true, server: d.server_used}).then(() => refresh(true));
+  };
+  q(".addnew").onclick = () => { add.classList.toggle("on"); if (add.classList.contains("on")) q(".nsname").focus(); };
+  q(".nscancel").onclick = () => add.classList.remove("on");
+  q(".nsfind").onclick = async () => {
+    const box = q(".nsfound");
+    box.textContent = "Looking… (a few seconds)";
+    try {
+      const found = await api("GET", "/api/companions/scan");
+      box.textContent = found.length ? "" : "None found. Is Companion running, and on the same network?";
+      for (const f of found) {
+        const b = document.createElement("button");
+        b.className = "small"; b.textContent = `${f.name} (${f.host}) · Companion ${f.version}`;
+        b.onclick = () => { q(".nsname").value = f.name === "This computer" ? "This computer's Companion" : f.name;
+                            q(".nshost").value = f.host; q(".nsport").value = f.port; };
+        box.appendChild(b);
+      }
+    } catch (e) { box.textContent = e.message; }
+  };
+  q(".nssave").onclick = async () => {
+    try {
+      const s = await api("POST", "/api/servers", {name: q(".nsname").value || "Companion", host: q(".nshost").value,
+                                                  port: +q(".nsport").value || 16622});
+      await put(d, {own_server: true, server: s.id}, `${s.name} added, and this deck's using it.`);
+      refresh(true);
+    } catch (e) { toast("Didn't add: " + e.message); }
+  };
+
+  // ---- Share
+  const url = deckBase() + "/deck/" + d.slug, short = deckBase() + "/" + d.n;
+  const ipBase = status && status.info && status.info.lan ? status.info.lan.replace(/\/$/, "") : location.origin;
+  q(".url").textContent = url; q(".open").href = url; q(".copyurl").onclick = () => copy(url);
+  q(".short").textContent = short; q(".copyshort").onclick = () => copy(short);
+  q(".ipurl").textContent = ipBase + "/" + d.n; q(".copyip").onclick = () => copy(ipBase + "/" + d.n);
+  q(".qrbig").src = `/api/decks/${d.id}/qr.png`;
+  q(".qrurl").textContent = `${deckBase()}/api/decks/${d.slug}/qr.png`;
+
+  // ---- Delete, saying which short addresses change
+  const del = q(".del"), renum = q(".renum");
   del.onclick = async () => {
     if (!del.classList.contains("armed")) {
       del.classList.add("armed"); del.textContent = "Sure? Tap again";
-      // the decks after this one move up a number: say so
       const after = status.decks.filter(x => x.n > d.n);
       if (after.length) {
         renum.innerHTML = "Heads up: deleting this renumbers the short addresses after it: " +
           after.map(x => `<b>${esc(x.name)}</b> /${x.n} → /${x.n - 1}`).join(", ") + ". Bookmarks to those need updating.";
         renum.style.display = "block";
       }
-      setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete"; renum.style.display = "none"; }, 6000);
+      setTimeout(() => { del.classList.remove("armed"); del.textContent = "Delete deck"; renum.style.display = "none"; }, 6000);
       return;
     }
-    try { await api("DELETE", "/api/decks/" + d.id); toast("Deck gone. Poof."); refresh(true); } catch (e) { toast(e.message); }
+    try { await api("DELETE", "/api/decks/" + d.id); delete openDeck[d.id]; remember(); toast("Deck gone. Poof."); refresh(true); }
+    catch (e) { toast(e.message); }
   };
+  // paint whatever's already known, then show the tab it was on
+  (keyStore[d.id] || []).forEach(k => k && el.querySelectorAll(`[data-i="${k.i}"]`).forEach(x => face(x, k)));
+  showTab(deckTab[d.id] || "layout");
   return el;
 }
+addEventListener("resize", () => document.querySelectorAll(".deck.expanded .preview").forEach(pv => {
+  const cols = getComputedStyle(pv).gridTemplateColumns.split(" ").length;
+  if (pv.clientWidth) pv.style.setProperty("--cw", (pv.clientWidth / cols) + "px");
+}));
 
 // ---- Companion servers ----
 function serverCard(s) {
@@ -728,8 +870,8 @@ async function refresh(force) {
   $("#bartext").textContent = s === "connected" ? `Companion ${status.companion || ""}` :
     s === "no decks" ? "No decks yet" : `${s}`;
   if (status.info) {
-    $("#lanaddr").textContent = status.info.lan || "Turned off (Settings → Browsers)";
-    $("#localname").textContent = status.info.local_name || "—";
+    $("#lanaddr").textContent = status.info.link || "Turned off (Settings → Browsers)";
+    $("#ipaddr").textContent = status.info.lan || "—";
     if (status.info.lan && !$("#homeqr").src) $("#homeqr").src = "/api/qr.png";
   }
   // rebuild the cards only when something other than live status changed, so
@@ -746,15 +888,21 @@ async function refresh(force) {
       box.textContent = "";
       status.decks.forEach(d => box.appendChild(deckCard(d)));
       if (!status.decks.length) box.innerHTML = "<div class='card cut hint'>No decks. Make one below.</div>";
+      requestAnimationFrame(() => document.querySelectorAll(".deck.expanded .preview").forEach(pv => {
+        const cols = getComputedStyle(pv).gridTemplateColumns.split(" ").length;
+        if (pv.clientWidth) pv.style.setProperty("--cw", (pv.clientWidth / cols) + "px");
+      }));
       sbox.textContent = "";
       status.servers.forEach(x => sbox.appendChild(serverCard(x)));
     }
   } else {
-    const badges = box.querySelectorAll(".deckhead .badge"), opens = box.querySelectorAll(".showing");
-    status.decks.forEach((d, i) => {
-      if (badges[i]) { badges[i].className = "badge " + d.status; badges[i].textContent = d.status; }
-      if (opens[i] && status.windows) opens[i].checked = !!status.windows[d.id];
-    });
+    for (const d of status.decks) {
+      const card = box.querySelector(`.deck[data-deck="${d.id}"]`);
+      if (!card) continue;
+      const b = card.querySelector(".line .badge");
+      b.className = "badge " + d.status; b.textContent = d.status;
+      if (status.windows) card.querySelectorAll(".vis input,.showing").forEach(x => x.checked = !!status.windows[d.id]);
+    }
   }
   const n = $("#notice");
   if (status.restart_needed) { n.style.display = "block"; n.textContent = "Restart RebelDeck to use the new port settings."; n.onclick = null; }
@@ -852,6 +1000,7 @@ $("#reloadlog").onclick = loadLog;
   try { presets = await api("GET", "/api/presets"); } catch (_) {}
   presetOptions($("#newpreset"), 8, 4);
   await refresh(true); try { await loadSettings(); } catch (_) {}
+  listen();
   show();
   setInterval(() => refresh(false), 3000);
 })();

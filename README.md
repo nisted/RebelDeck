@@ -22,7 +22,7 @@ service for phones and tablets.
 ## Three places, three jobs
 
 - **Tray menu**: status, the pop-out, the web GUI, show/hide each deck, identify a deck, update, quit.
-- **Pop-out**: start at login, a switch per deck window, QR codes for phones, Companion status.
+- **Pop-out**: start at login, a Visible switch per deck, QR codes for phones, Companion status.
 - **Web GUI** (`http://127.0.0.1:8091/gui`): everything else.
 
 ## What it does
@@ -30,7 +30,7 @@ service for phones and tablets.
 - **Decks** of any size (presets or columns × rows), each its own Companion surface. Renaming or resizing keeps its
   Companion setup.
 - **Its own deck windows**: frameless, float on top (switch on the window's header), drag to move, corner grip to
-  resize (locked to the deck's shape), remembers where they were, movable lock, colour and see-through background.
+  resize (locked to the deck's shape), remembers where they were (Reset puts them back), Locked switch, colour and transparency.
 - **Button editor**: Clickable / Unclickable / Hybrid (pick which buttons work); paint keys as **buttons**,
   **rotaries** (drag or scroll to turn, tap to push) or **faders** (Intech Grid style: turn steps plus a 0-127 surface
   variable `fader_N`; Companion moves them with `fader_N_set`); **break out** single keys into their own little
@@ -41,7 +41,7 @@ service for phones and tablets.
   computer and the local network for Companion's Satellite port.
 - **Short addresses**: `/1`, `/2`… open decks by their number on the Decks page.
 - **Profiles**: save and switch whole sets of decks.
-- **Browsers**: every deck at `http://<computer>:8091/deck/<deck-name>`, a pick-a-deck page that also lists decks on
+- **Browsers**: every deck at `http://<computer>.local:8091/deck/<deck-name>` (Settings: links can use the `.local` name, the plain name or the IP address), a pick-a-deck page that also lists decks on
   other RebelDecks on the network, QR codes, and a `<computer>.local` name. Set a web password and other devices need
   it for the web GUI (pressing buttons stays open).
 - A deck's QR code can sit on a Companion button: Generic HTTP's **Image from URL** feedback with

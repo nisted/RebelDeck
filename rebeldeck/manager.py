@@ -23,6 +23,7 @@ APP_KEYS = {
     "sync_decks_with_companion_sync": bool,
     "find_other_rigs": bool,
     "discovery_port": lambda v: settings.int_setting(v, 1024, 65535, 8092),
+    "link_address": lambda v: v if v in settings.LINK_ADDRESSES else "local",
 }
 RESTART_DECKS = ("button_px",)
 RESTART_APP = ("web_port", "web_network", "discovery_port")
@@ -215,6 +216,8 @@ class Manager:
             self.on_windows(new["id"], new["showing"])
         elif new["breakout"] != old["breakout"] and self.on_windows and new["showing"]:
             self.on_windows(new["id"], True)      # open or close the broken-out keys' windows
+        elif changes.get("window") == {} and old.get("window") and self.on_windows and new["showing"]:
+            self.on_windows(new["id"], "reopen")  # Reset: back to the starting size and place
         elif ((new["transparency"] > 0) != (old["transparency"] > 0) and self.on_windows and new["showing"]
               and not WIN):
             self.on_windows(new["id"], "reopen")  # Macs and Pis make a see-through window when it opens

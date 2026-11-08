@@ -117,7 +117,10 @@ class Popup:
         self.box_parts = [self.box, inner, self.dot, tt, self.line, self.detail]
 
         # decks: a switch each (window open), and a QR
-        tk.Label(r, text="DECKS", bg=BG, fg=DIM, font=(FONT, z(9), "bold"), anchor="w").pack(fill="x", padx=z(20))
+        dh = tk.Frame(r, bg=BG)
+        dh.pack(fill="x", padx=z(20))
+        tk.Label(dh, text="DECKS", bg=BG, fg=DIM, font=(FONT, z(9), "bold"), anchor="w").pack(side="left")
+        tk.Label(dh, text="QR    VISIBLE", bg=BG, fg=DIM, font=(FONT, z(8), "bold"), anchor="e").pack(side="right")
         self.decks = tk.Frame(r, bg=BG)
         self.decks.pack(fill="x", padx=z(20), pady=(z(2), z(8)))
 
@@ -366,7 +369,7 @@ class Popup:
                                                 for x in servers if x.get("decks")) or st.get("companion_at", ""), fg=subcol)
         info = st.get("info") or {}
         self.sub.configure(text=f"{info.get('computer', '')} · {st.get('label', '')}")
-        self.lan.configure(text=(info.get("lan") or "browsers off").replace("http://", "").rstrip("/"))
+        self.lan.configure(text=(info.get("link") or info.get("lan") or "browsers off").replace("http://", "").rstrip("/"))
         up = st.get("update") or {}
         if up.get("newer"):
             self.note.configure(text=f"Update available: {up.get('latest')}  (click to update)")

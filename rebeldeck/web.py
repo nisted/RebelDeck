@@ -13,6 +13,7 @@ API (JSON)
   GET  /api/status               app, Companion servers and decks
   GET  /api/info                 addresses phones can use
   GET  /api/rigs                 decks on other RebelDecks on the network
+  GET  /api/events               every deck's buttons, live (server-sent events)
   GET  /api/presets              deck size presets
   GET  /api/decks                decks
   POST /api/decks                add a deck            {name, columns, rows}
@@ -80,13 +81,13 @@ class Hub:
     def _on_change(self, kind, deck_id, value):
         deck = self.m.deck(deck_id) if deck_id else None
         if kind == "key" and deck:
-            msg = ("key", deck.key_json(value))
+            msg = ("key", dict(deck.key_json(value), deck=deck_id))
         elif kind == "status" and deck:
-            msg = ("status", {"status": value, "companion": deck.companion_version})
+            msg = ("status", {"status": value, "companion": deck.companion_version, "deck": deck_id})
         elif kind == "brightness":
-            msg = ("brightness", {"value": value})
+            msg = ("brightness", {"value": value, "deck": deck_id})
         elif kind == "fader":
-            msg = ("fader", {"i": value[0], "value": value[1]})
+            msg = ("fader", {"i": value[0], "value": value[1], "deck": deck_id})
         elif kind == "identify":
             msg = ("identify", {})
         elif kind == "decks":
@@ -125,7 +126,8 @@ def make_server(manager, app=None, rigs=None):
     hub = Hub(manager)
     pages = {"deck": _page("deck.html"), "gui": _page("gui.html"), "home": _page("home.html")}
 
-    def lan_base(handler=None):
+    def ip_base(handler=None):
+        """http://<IP address>:<port> for other devices (or the address this page came in on)."""
         if app and app.lan_url():
             return app.lan_url().rstrip("/")
         if handler is not None:
@@ -133,6 +135,18 @@ def make_server(manager, app=None, rigs=None):
             if host:
                 return "http://" + host
         return f"http://127.0.0.1:{manager.cfg['web_port']}"
+
+    def lan_base(handler=None):
+        """The address links and QR codes use, from the link_address setting:
+        <computer>.local (default), the bare computer name, or the IP address."""
+        from .rigs import hostname
+        how = manager.cfg.get("link_address", "local")
+        port = manager.cfg["web_port"]
+        if how == "local":
+            return f"http://{hostname().lower()}.local:{port}"
+        if how == "name":
+            return f"http://{hostname().lower()}:{port}"
+        return ip_base(handler)
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -246,10 +260,12 @@ def make_server(manager, app=None, rigs=None):
                     st["update"] = app.update_cached()
                     st["windows"] = app.windows_showing()
                 return self.send(200, st)
+            if path == "/api/events":
+                return self.all_events()
             if path == "/api/info":
                 return self.send(200, self.info())
             if path == "/api/rigs":
-                here = {"name": self.info()["computer"], "url": lan_base(self), "here": True,
+                here = {"name": self.info()["computer"], "url": lan_base(self), "ip_url": ip_base(self), "here": True,
                         "decks": [{"name": d["name"], "slug": d["slug"], "n": d["n"], "columns": d["columns"],
                                    "rows": d["rows"], "status": d["status"]} for d in manager.deck_list()]}
                 others = rigs.others() if rigs and manager.cfg.get("find_other_rigs", True) else []
@@ -301,10 +317,13 @@ def make_server(manager, app=None, rigs=None):
 
         def info(self):
             from .rigs import hostname
-            base = lan_base()
             port = manager.cfg["web_port"]
-            return {"computer": hostname(), "lan": base + "/" if manager.cfg.get("web_network", True) else None,
-                    "local_name": f"http://{hostname().lower()}.local:{port}/" if manager.cfg.get("web_network", True) else None,
+            on = manager.cfg.get("web_network", True)
+            return {"computer": hostname(),
+                    "link": lan_base(self) + "/" if on else None,          # what links and QR codes use
+                    "lan": ip_base(self) + "/" if on else None,            # the IP address: the backup
+                    "local_name": f"http://{hostname().lower()}.local:{port}/" if on else None,
+                    "link_address": manager.cfg.get("link_address", "local"),
                     "here": f"http://127.0.0.1:{port}/"}
 
         def events(self, deck_id):
@@ -330,6 +349,37 @@ def make_server(manager, app=None, rigs=None):
                         self.event("state", deck.snapshot() if deck else {"gone": True})
                         continue
                     self.event(kind, data)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                hub.unsubscribe(q)
+                self.close_connection = True
+
+        def all_events(self):
+            """Every deck's buttons, live, in one stream (the web GUI's previews)."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            q = hub.subscribe(None)
+
+            def states():
+                self.event("states", {"decks": [manager.deck(d["id"]).snapshot() for d in manager.cfg["decks"]
+                                                if manager.deck(d["id"])]})
+            try:
+                states()
+                while True:
+                    try:
+                        kind, data = q.get(timeout=15)
+                    except queue.Empty:
+                        self.wfile.write(b": keep-alive\n\n")
+                        self.wfile.flush()
+                        continue
+                    if kind == "reload":
+                        states()
+                    elif kind in ("key", "status"):
+                        self.event(kind, data)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
             finally:

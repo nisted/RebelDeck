@@ -313,6 +313,25 @@ def run(png, caps, rotary_amount=False):
         assert probe_companion("127.0.0.1", fc.port) == "5.1.2"
         assert probe_companion("127.0.0.1", 1) is None
 
+        # link addresses: .local by default, or the name, or the IP
+        info = call(base, "GET", "/api/info")
+        assert info["link_address"] == "local" and ".local:" in info["link"], info
+        call(base, "PUT", "/api/settings", {"link_address": "name"})
+        info = call(base, "GET", "/api/info")
+        assert ".local" not in info["link"] and info["link"].startswith("http://" + rigs.hostname().lower()), info
+        call(base, "PUT", "/api/settings", {"link_address": "ip"})
+        assert call(base, "GET", "/api/info")["link"] == call(base, "GET", "/api/info")["lan"]
+        assert call(base, "PUT", "/api/settings", {"link_address": "carrier pigeon"})["link_address"] == "local"
+
+        # every deck's buttons in one live stream
+        ev = urllib.request.urlopen(base + "/api/events", timeout=5)
+        assert ev.readline().startswith(b"event: states")
+        assert len(json.loads(ev.readline()[6:])["decks"]) == 2
+        fc.key_rgb(first["device_id"], 2, 4, text="ALL")
+        got = read_events(ev, b'"deck": "' + first["id"].encode())
+        assert b"event: key" in got and b'"deck": "' + first["id"].encode() in got
+        ev.close()
+
         # this rig on the pick-a-deck list
         rl = call(base, "GET", "/api/rigs")
         assert rl[0]["here"] and {d["slug"] for d in rl[0]["decks"]} == {"rebeldeck", "foh-deck"}

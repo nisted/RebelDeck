@@ -25,6 +25,7 @@ DEFAULTS = {
     "sync_decks_with_companion_sync": False,
     "find_other_rigs": True,         # list decks from other RebelDecks on the network
     "discovery_port": 8092,          # UDP port RebelDecks say hello on
+    "link_address": "local",         # links and QR codes use: "local" (computer.local), "name" (computer) or "ip"
     "default_server": "main",
 }
 
@@ -48,6 +49,7 @@ DECK_DEFAULTS = {
 
 KEY_TYPES = ("button", "rotary", "fader", "gap", "strip")   # strip: a button with a wide, short picture
 CLICK_MODES = ("clickable", "unclickable", "hybrid")
+LINK_ADDRESSES = ("local", "name", "ip")
 
 def _layout(cols, rows, rotary_row=None, strip_row=None, gap_cols=(), gap_rows=()):
     kt = {}

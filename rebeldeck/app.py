@@ -463,7 +463,7 @@ class App:
             pystray.MenuItem(status_text, None, enabled=False),
             pystray.MenuItem("Show/hide pop-out", lambda *_: self.toggle_popup(), default=True),
             pystray.MenuItem("Open web GUI", lambda *_: self.open_gui()),
-            pystray.MenuItem("Decks", pystray.Menu(lambda: deck_items())),
+            pystray.MenuItem("Visible decks", pystray.Menu(lambda: deck_items())),
             pystray.MenuItem("Identify a deck", pystray.Menu(lambda: identify_items())),
             pystray.MenuItem(update_text, do_update),
             pystray.Menu.SEPARATOR,
