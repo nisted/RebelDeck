@@ -36,7 +36,9 @@ DECK_DEFAULTS = {
     "own_server": False, "server": "",          # own_server on: this deck uses "server", not the default
     "click_mode": "clickable",                  # clickable | unclickable | hybrid
     "blocked": [],                              # hybrid: keys that ignore presses
-    "key_types": {},                            # "n": "rotary" | "fader" | "gap" | "strip" (others are buttons)
+    "key_types": {},                            # "n": "rotary" | "fader" | "gap" | "strip" | "sticky" (others are buttons)
+    "rotary": {},                               # "n": {"step": px of drag per click, "vertical": drag up/down}
+    "hotkeys": {},                              # "n": "Ctrl+Alt+1": presses the key from anywhere
     "strip_ratio": 2,                           # strip buttons' pictures: width / height
     "breakout": [],                             # keys in their own little windows
     "breakout_windows": {},                     # "n": {"x", "y", "w", "h"}
@@ -47,7 +49,10 @@ DECK_DEFAULTS = {
     "window": {},                               # {"x", "y", "w", "h"}: where it was last
 }
 
-KEY_TYPES = ("button", "rotary", "fader", "gap", "strip")   # strip: a button with a wide, short picture
+KEY_TYPES = ("button", "rotary", "fader", "gap", "strip", "sticky")   # strip: wide, short picture; sticky: latches
+SPECIAL_TYPES = KEY_TYPES[1:]
+ROTARY_STEP = 10                                # px of drag per click, as ScreenDeck
+ROTARY_STEP_RANGE = (2, 200)
 CLICK_MODES = ("clickable", "unclickable", "hybrid")
 LINK_ADDRESSES = ("local", "name", "ip")
 
@@ -170,7 +175,20 @@ def clean_deck(d):
         for c in range(out["columns"]):
             kt.setdefault(str(r * out["columns"] + c), "strip")
     out["key_types"] = {str(k): v for k, v in kt.items()
-                        if v in ("rotary", "fader", "gap", "strip") and str(k).isdigit() and int(k) < total}
+                        if v in SPECIAL_TYPES and str(k).isdigit() and int(k) < total}
+    rot = out.get("rotary") if isinstance(out.get("rotary"), dict) else {}
+    out["rotary"] = {}
+    for k, v in rot.items():
+        if str(k).isdigit() and int(k) < total and isinstance(v, dict):
+            out["rotary"][str(k)] = {"step": int_setting(v.get("step"), *ROTARY_STEP_RANGE, ROTARY_STEP),
+                                     "vertical": bool(v.get("vertical", False))}
+    from .hotkeys import normalise            # here, not at the top: hotkeys imports nothing of ours
+    hk = out.get("hotkeys") if isinstance(out.get("hotkeys"), dict) else {}
+    out["hotkeys"] = {}
+    for k, v in hk.items():
+        n = normalise(v)
+        if n and str(k).isdigit() and int(k) < total and n not in out["hotkeys"].values():
+            out["hotkeys"][str(k)] = n
     try:
         out["strip_ratio"] = max(1.0, min(8.0, round(float(out.get("strip_ratio", 2)), 2)))
     except (TypeError, ValueError):

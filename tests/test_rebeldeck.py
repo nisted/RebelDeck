@@ -127,6 +127,44 @@ def run(png, caps, rotary_amount=False):
         assert wait(lambda: any(f"DEVICEID={first['device_id']} KEY=5 PRESSED=true" in l for l in fc.pressed))
         assert status_of(base, "POST", f"/api/decks/{first['id']}/press", {}) == 400
 
+        # sticky: a press holds it down in Companion, the next lets go; releases do nothing
+        call(base, "PUT", f"/api/decks/{first['id']}", {"key_types": {"6": "sticky"}})
+        assert wait(lambda: m.deck(first["id"]) is not deck and m.deck(first["id"]).status == "connected")
+        deck = m.deck(first["id"])
+        fc.pressed.clear()
+        dev = first["device_id"]
+        call(base, "POST", f"/api/decks/{first['id']}/press", {"key": 6, "pressed": True})
+        call(base, "POST", f"/api/decks/{first['id']}/press", {"key": 6, "pressed": False})
+        assert wait(lambda: any(f"KEY=6 PRESSED=true" in l for l in fc.pressed))
+        assert 6 in deck.latched and deck.key_json(6)["latched"]
+        time.sleep(0.2)
+        assert not any("KEY=6 PRESSED=false" in l for l in fc.pressed)
+        call(base, "POST", f"/api/decks/{first['id']}/let-go", {"key": 6})            # "Let go", from the menu
+        assert wait(lambda: any("KEY=6 PRESSED=false" in l for l in fc.pressed)) and 6 not in deck.latched
+        # a hotkey's tap: press and release (this computer only)
+        fc.pressed.clear()
+        call(base, "POST", f"/api/decks/{first['id']}/tap", {"key": 2})
+        assert wait(lambda: any(f"DEVICEID={dev} KEY=2 PRESSED=false" in l for l in fc.pressed))
+        assert any("KEY=2 PRESSED=true" in l for l in fc.pressed)
+
+        # rotary settings and hotkeys are saved, tidied, and in the page's style
+        call(base, "PUT", f"/api/decks/{first['id']}", {"rotary": {"1": {"step": 500, "vertical": 1}, "99": {}},
+                                                        "hotkeys": {"2": "alt + ctrl + k", "3": "f13"}})
+        dcfg = m.deck_cfg(first["id"])
+        assert dcfg["rotary"] == {"1": {"step": 10, "vertical": True}}, dcfg["rotary"]
+        assert dcfg["hotkeys"] == {"2": "Ctrl+Alt+K", "3": "F13"}
+        st = call(base, "GET", f"/api/decks/{first['id']}/state")["style"]
+        assert st["hotkeys"]["2"] == "Ctrl+Alt+K" and st["rotary"]["1"]["vertical"]
+        assert status_of(base, "PUT", f"/api/decks/{first['id']}", {"hotkeys": {"4": "k"}}) == 400        # just typing
+        assert status_of(base, "PUT", f"/api/decks/{first['id']}", {"hotkeys": {"4": "F13", "5": "F13"}}) == 400
+        other = call(base, "POST", "/api/decks", {"name": "Other", "columns": 2, "rows": 1})
+        assert status_of(base, "PUT", f"/api/decks/{other['id']}", {"hotkeys": {"0": "Ctrl+Alt+K"}}) == 400   # on the first deck
+        assert status_of(base, "PUT", f"/api/decks/{other['id']}", {"hotkeys": {"0": "Ctrl+Alt+J"}}) == 200
+        call(base, "DELETE", f"/api/decks/{other['id']}")
+        call(base, "PUT", f"/api/decks/{first['id']}", {"hotkeys": {}, "rotary": {}, "key_types": {}})
+        assert wait(lambda: m.deck(first["id"]).status == "connected")
+        deck = m.deck(first["id"])
+
         # identify flashes open pages
         call(base, "POST", f"/api/decks/{first['slug']}/identify")
         assert b"event: identify" in read_events(ev, b"event: identify")
@@ -505,6 +543,81 @@ def test_labwc_rule():
     assert open(rc).read().count("RebelDeck: no labwc") == 1
 
 
+def test_hotkey_names():
+    from rebeldeck.hotkeys import normalise, split
+    assert normalise("shift+ctrl+a") == "Ctrl+Shift+A"
+    assert normalise("Cmd + Option + 1") == "Alt+Super+1"
+    assert normalise("win+pgdn") == "Super+PageDown"
+    assert normalise("F5") == "F5" and normalise("shift+f24") == "Shift+F24"
+    for bad in ("a", "shift+a", "ctrl", "ctrl+a+b", "ctrl+;", "", None, 5, "ctrl+f25"):
+        assert normalise(bad) is None, bad
+    assert split("Ctrl+Num7") == (("Ctrl",), "Num7")
+
+
+def test_labwc_hotkeys():
+    from rebeldeck import hotkeys as H
+    cmd = {"Ctrl+Alt+K": ["/opt/rebel deck/python", "run.py", "--hotkey", "abc", "3"],
+           "F13": ["/usr/bin/python3", "run.py", "--hotkey", "abc", "4"]}
+    pi = ('<?xml version="1.0"?>\n<labwc_config>\n  <keyboard>\n    <keybind key="A-Tab"><action name="NextWindow"/></keybind>\n'
+          '  </keyboard>\n</labwc_config>\n')
+    out = H.labwc_text(pi, cmd)
+    assert '<keybind key="C-A-k">' in out and '<keybind key="F13">' in out and "A-Tab" in out
+    assert "&apos;" not in out and "'/opt/rebel deck/python'" in out          # quoted for labwc's own splitting
+    assert "<default />" not in out                                         # it has keybinds already
+    assert out.count(H.BEGIN) == 1
+    again = H.labwc_text(out, {"Super+Up": ["x"]})                           # replaced, not added to
+    assert again.count(H.BEGIN) == 1 and "W-Up" in again and "C-A-k" not in again
+    assert H.labwc_text(again, {}) == pi                                      # all gone: back as it was
+    # a file with no keybinds of its own: keep labwc's defaults (Alt+Tab and friends)
+    bare = '<?xml version="1.0"?>\n<labwc_config>\n  <theme><name>x</name></theme>\n</labwc_config>\n'
+    out = H.labwc_text(bare, cmd)
+    assert "<keyboard>" in out and "<default />" in out
+    assert H.labwc_text(out, {}) .count("<keybind") == 0
+    # the backend writes the user's file and tidies up after itself
+    home = tempfile.mkdtemp()
+    os.makedirs(os.path.join(home, ".config", "labwc"))
+    path = os.path.join(home, ".config", "labwc", "rc.xml")
+    with open(path, "w") as f:
+        f.write(pi)
+    lw = H.LabwcKeys(lambda d, k: ["rebeldeck", "--hotkey", d, str(k)], home=home)
+    lw.reconfigure = lambda: None
+    assert lw.apply({"Ctrl+Alt+K": ("abc", 3)}) == {}
+    assert "--hotkey abc 3" in open(path).read()
+    assert lw.apply({}) == {} and open(path).read() == pi
+
+
+def test_hotkey_service():
+    """The decks' hotkeys reach the computer's hotkeys; problems come back to the deck list; a hotkey taps."""
+    from rebeldeck.hotkeys import Hotkeys
+    fresh_settings({"companion_port": 1, "web_port": 0})
+    m = Manager()
+    m.start()
+    d = m.cfg["decks"][0]
+    seen = []
+
+    class Fake:
+        name = "fake"
+
+        def apply(self, want):
+            seen.append(dict(want))
+            return {"F13": "another program already uses this shortcut"} if "F13" in want else {}
+
+    hk = Hotkeys(m, lambda *a: [])
+    hk.backend = Fake()
+    hk.start()
+    m.update_deck(d["id"], {"hotkeys": {"1": "Ctrl+Alt+K", "2": "F13"}, "key_types": {"3": "gap"}})
+    assert wait(lambda: seen and seen[-1] == {"Ctrl+Alt+K": (d["id"], 1), "F13": (d["id"], 2)}), seen
+    assert wait(lambda: m.deck_list()[0]["hotkey_problems"] == {"2": "another program already uses this shortcut"})
+    taps = []
+    m.tap = lambda deck_id, key: taps.append((deck_id, key))
+    hk.fire("Ctrl+Alt+K")
+    assert taps == [(d["id"], 1)]
+    m.update_deck(d["id"], {"hotkeys": {"3": "Ctrl+Alt+J"}})                # a gap's hotkey does nothing
+    assert wait(lambda: seen[-1] == {}) and wait(lambda: m.deck_list()[0]["hotkey_problems"] == {})
+    assert m.status()["hotkeys"]["platform"] in ("windows", "mac", "linux")
+    m.stop()
+
+
 def test_webkit_safe_mode():
     from rebeldeck import app
     saved = {k: os.environ.pop(k, None) for k in ("WEBKIT_DISABLE_DMABUF_RENDERER", "WEBKIT_DISABLE_COMPOSITING_MODE")}
@@ -527,7 +640,10 @@ if __name__ == "__main__":
     test_tray_icons_named_pngs()
     test_webkit_safe_mode()
     test_labwc_rule()
-    print("ok: tray icons, WebKit safe mode, labwc rule")
+    test_hotkey_names()
+    test_labwc_hotkeys()
+    test_hotkey_service()
+    print("ok: tray icons, WebKit safe mode, labwc rule, hotkeys")
     test_parse()
     test_old_settings_move_over()
     test_password()

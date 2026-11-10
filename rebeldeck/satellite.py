@@ -77,6 +77,9 @@ class Deck:
         self.faders = {int(k): 0 for k, t in deck.get("key_types", {}).items() if t == "fader"}
         self.gaps = {int(k) for k, t in deck.get("key_types", {}).items() if t == "gap"}
         self.strips = {int(k) for k, t in deck.get("key_types", {}).items() if t == "strip"}
+        self.latched = set()                # sticky keys held down in Companion right now
+        self._logged = None                 # last state written to the log (it doesn't repeat itself)
+        self._last_err = None
         self.ratio = float(deck.get("strip_ratio", 2) or 2)
         self._advanced = False              # Companion's free layout (strips, gaps), from API 1.9
         self._nonsquare = False             # wide pictures, from API 1.11 (Companion 5)
@@ -98,9 +101,25 @@ class Deck:
             return f'CONTROLID="{key // self.cols}/{key % self.cols}"'
         return f"KEY={key}"
 
+    def sticky(self, key):
+        return self.deck.get("key_types", {}).get(str(key)) == "sticky"
+
     def press(self, key, pressed):
-        if 0 <= key < len(self.keys) and key not in self.gaps:
-            self._send(f"KEY-PRESS DEVICEID={self.device_id} {self._where(key)} PRESSED={'true' if pressed else 'false'}")
+        if not (0 <= key < len(self.keys)) or key in self.gaps:
+            return
+        if self.sticky(key):
+            # sticky: one press holds it down in Companion, the next lets go; releases do nothing
+            if not pressed:
+                return
+            pressed = key not in self.latched
+            (self.latched.add if pressed else self.latched.discard)(key)
+            self._emit("key", key)
+        self._send(f"KEY-PRESS DEVICEID={self.device_id} {self._where(key)} PRESSED={'true' if pressed else 'false'}")
+
+    def let_go(self, key):
+        """A sticky key: let go, if it's held."""
+        if key in self.latched:
+            self.press(key, True)
 
     def rotate(self, key, steps):
         """A rotary turned: steps > 0 clockwise."""
@@ -148,13 +167,15 @@ class Deck:
                 "blocked": d.get("blocked", []), "key_types": d.get("key_types", {}),
                 "breakout": d.get("breakout", []), "float": d.get("float", True),
                 "movable": d.get("movable", True), "transparency": d.get("transparency", 0),
-                "strip_ratio": d.get("strip_ratio", 2),
+                "strip_ratio": d.get("strip_ratio", 2), "rotary": d.get("rotary", {}),
+                "hotkeys": d.get("hotkeys", {}),
                 "colour": d.get("colour", "#000000"), "faders": {str(k): v for k, v in self.faders.items()}}
 
     def key_json(self, i):
         k = self.keys[i]
         return {"i": i, "image": k.image, "color": k.color, "text": k.text,
-                "textColor": k.text_color, "pressed": k.pressed, "location": k.location}
+                "textColor": k.text_color, "pressed": k.pressed, "location": k.location,
+                "latched": i in self.latched}
 
     def locations(self):
         return [k.location for k in self.keys]
@@ -163,7 +184,12 @@ class Deck:
     def _set_status(self, s):
         if s != self.status:
             self.status = s
-            log.info("companion: %s", s)
+            # while Companion's away, each retry goes connecting -> disconnected: log that once
+            if s != self._logged and not (s == "connecting" and self._logged == "disconnected"):
+                log.info("%s: companion %s", self.deck.get("name", self.id), s)
+                self._logged = s
+            if s == "connected":
+                self._last_err = None
             self._emit("status", s)
 
     def _emit(self, kind, value):
@@ -199,8 +225,15 @@ class Deck:
                 self._session()
                 delay = 1
             except OSError as e:
-                log.info("companion: %s", e)
+                if str(e) != self._last_err:            # the same error again and again: once is enough
+                    log.info("%s: companion at %s:%s: %s", self.deck.get("name", self.id),
+                             self.server["host"], self.server["port"], e)
+                    self._last_err = str(e)
             self._close()
+            if self.latched:                            # Companion's forgotten them
+                held, self.latched = self.latched, set()
+                for k in held:
+                    self._emit("key", k)
             if self._stop.is_set():
                 break
             self._set_status("disconnected")

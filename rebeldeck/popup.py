@@ -120,7 +120,12 @@ class Popup:
         dh = tk.Frame(r, bg=BG)
         dh.pack(fill="x", padx=z(20))
         tk.Label(dh, text="DECKS", bg=BG, fg=DIM, font=(FONT, z(9), "bold"), anchor="w").pack(side="left")
-        tk.Label(dh, text="QR    VISIBLE", bg=BG, fg=DIM, font=(FONT, z(8), "bold"), anchor="e").pack(side="right")
+        # each header sits over its own column: the QR codes are rightmost, the Visible switches left of them
+        for text, width, pad in (("QR", z(26) + 2, (z(8), 0)), ("VISIBLE", z(52), (0, 0))):
+            cell = tk.Frame(dh, bg=BG, width=width, height=z(14))
+            cell.pack_propagate(False)
+            cell.pack(side="right", padx=pad)
+            tk.Label(cell, text=text, bg=BG, fg=DIM, font=(FONT, z(8), "bold")).place(relx=.5, rely=.5, anchor="center")
         self.decks = tk.Frame(r, bg=BG)
         self.decks.pack(fill="x", padx=z(20), pady=(z(2), z(8)))
 
@@ -337,10 +342,14 @@ class Popup:
             tk.Label(row, text=f"  {d['columns']}×{d['rows']}", bg=BG, fg=DIM, font=(FONT, z(9))).pack(side="left")
             self.thumb(row, d).pack(side="right", padx=(z(8), 0))
             if local:
-                sw = Switch(tk, row, z, (lambda i: lambda on: self.put(f"/api/decks/{i}", {"showing": on}))(d["id"]))
+                # in a cell as wide as the VISIBLE header, so the header sits over it
+                cell = tk.Frame(row, bg=BG, width=z(52), height=z(20))
+                cell.pack_propagate(False)
+                cell.pack(side="right")
+                sw = Switch(tk, cell, z, (lambda i: lambda on: self.put(f"/api/decks/{i}", {"showing": on}))(d["id"]))
                 # the window's real state, not just the setting (it may still be opening, or failed)
                 sw.set(windows.get(d["id"], False) if windows is not None else d["showing"])
-                sw.pack(side="right")
+                sw.pack(expand=True)
 
     def poll_once(self):
         try:

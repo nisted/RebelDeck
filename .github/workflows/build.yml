@@ -22,7 +22,7 @@ jobs:
           cat rebeldeck/_build.py
           python icon.py
       - name: Build
-        run: pyinstaller --noconfirm --onefile --windowed --name RebelDeck --icon icon.ico --hidden-import pystray._win32 --hidden-import rebeldeck.popup --hidden-import rebeldeck.window --collect-all webview --add-data "rebeldeck/deck.html;rebeldeck" --add-data "rebeldeck/gui.html;rebeldeck" --add-data "rebeldeck/home.html;rebeldeck" run.py
+        run: pyinstaller --noconfirm --onefile --windowed --name RebelDeck --icon icon.ico --hidden-import pystray._win32 --hidden-import rebeldeck.popup --hidden-import rebeldeck.window --hidden-import rebeldeck.hotkeys --collect-all webview --add-data "rebeldeck/deck.html;rebeldeck" --add-data "rebeldeck/gui.html;rebeldeck" --add-data "rebeldeck/home.html;rebeldeck" run.py
       - name: Installer
         shell: pwsh
         run: |
@@ -54,7 +54,7 @@ jobs:
         run: |
           pyinstaller --noconfirm --windowed --name RebelDeck --icon icon.png \
             --osx-bundle-identifier uk.co.nigelisted.rebeldeck \
-            --hidden-import pystray._darwin --hidden-import rebeldeck.popup --hidden-import rebeldeck.window --collect-all webview \
+            --hidden-import pystray._darwin --hidden-import PyObjCTools.AppHelper --hidden-import rebeldeck.popup --hidden-import rebeldeck.window --hidden-import rebeldeck.hotkeys --collect-all webview \
             --add-data "rebeldeck/deck.html:rebeldeck" --add-data "rebeldeck/gui.html:rebeldeck" --add-data "rebeldeck/home.html:rebeldeck" \
             run.py
           plist="dist/RebelDeck.app/Contents/Info.plist"

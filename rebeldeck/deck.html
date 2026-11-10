@@ -47,6 +47,14 @@ body.win #wrap{padding:var(--pad)}
 .key.strip{height:calc(var(--k) / var(--ratio, 2));align-self:center;border-radius:4%/8%}
 .key.strip span{font-size:calc(var(--k)*.12)}
 .key.gap{visibility:hidden;pointer-events:none}
+/* in RebelDeck's own window a gap can still be right-clicked (to turn it back into something) */
+body.win .key.gap{visibility:visible;opacity:0;pointer-events:auto;cursor:default}
+body.win .key.gap:hover{opacity:1;background:transparent!important;border:1px dashed var(--edge)}
+body.win .key.gap:hover>*{display:none}
+.key.sticky::after{content:"";position:absolute;right:5%;top:5%;width:9%;height:9%;min-width:5px;min-height:5px;border-radius:50%;
+  background:var(--dim);box-shadow:0 0 0 1px #000;z-index:3;pointer-events:none}
+.key.sticky.latched{box-shadow:inset 0 0 0 3px var(--purple),0 0 10px rgb(185 115 255/.7)}
+.key.sticky.latched::after{background:var(--green)}
 .key.off{cursor:default}
 .key.out{background:transparent!important;border:1px dashed var(--edge);cursor:default}
 .key.out>*{display:none}
@@ -77,6 +85,28 @@ body.win.movable #grip{display:block}
 #ident b{font:800 clamp(18px,8vmin,64px)/1 var(--sans);color:#fff;text-transform:uppercase;letter-spacing:.06em;text-align:center;padding:10px}
 #ident.on{display:grid}
 @keyframes flash{50%{background:rgb(185 115 255/.25)}}
+/* right-click menu (RebelDeck's own windows) */
+#menu{position:fixed;z-index:50;display:none;min-width:190px;max-width:calc(100vw - 8px);max-height:calc(100vh - 8px);overflow:auto;
+  background:#120d20;border:1px solid var(--purple);box-shadow:0 6px 24px #000c;padding:4px 0;font:12px/1.2 var(--mono)}
+#menu.on{display:block}
+#menu .t{padding:6px 12px 4px;color:var(--purple);font:800 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase}
+#menu .h{padding:4px 12px 2px;color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+#menu .i{padding:4px 12px 4px 26px;cursor:pointer;position:relative;white-space:nowrap}
+#menu .i:hover{background:#251a3d}
+#menu .i.on::before{content:"●";position:absolute;left:11px;color:var(--purple);font-size:10px;top:5px}
+#menu .i.off{color:var(--dim);cursor:default}#menu .i.off:hover{background:none}
+#menu .sep{height:1px;background:var(--edge);margin:4px 0}
+#menu .row{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 26px}
+#menu .row button{background:#251a3d;color:var(--lav);border:1px solid var(--edge);font:inherit;width:22px;height:20px;cursor:pointer;padding:0}
+#menu .row input{width:46px;background:#06070b;color:var(--lav);border:1px solid var(--edge);font:inherit;padding:2px 4px;text-align:center}
+#menu .warn{padding:4px 12px 6px 26px;color:var(--amber);font-size:11px;white-space:normal;max-width:260px}
+#cap{position:fixed;inset:0;z-index:60;display:none;place-items:center;text-align:center;background:rgb(6 7 11/.93);padding:16px}
+#cap.on{display:grid}
+#cap b{display:block;color:var(--purple);font:800 clamp(13px,4vmin,20px)/1.2 var(--sans);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+#cap .combo{font-size:clamp(14px,5vmin,26px);color:var(--lav);min-height:1.4em;margin:6px 0}
+#cap i{font-style:normal;color:var(--dim)}#cap .err{color:var(--amber)}
+#toast{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:70;display:none;background:#251a3d;
+  border:1px solid var(--purple);padding:6px 10px;max-width:90vw;text-align:center}
 /* one broken-out key */
 body.single #head{height:12px;padding:0;background:rgb(14 11 24/.7)}
 body.single #head>*{display:none}
@@ -94,6 +124,10 @@ body.single{--head:12px;--pad:4px}
 <div id="grip" title="Drag to resize (keeps the deck's shape)"></div>
 <div id="lost"><div><b>I've got a bad feeling about this...</b><i id="why">Connecting…</i></div></div>
 <div id="ident"><b id="identName"></b></div>
+<div id="menu" role="menu"></div>
+<div id="cap"><div><b id="capTitle">Press the hotkey</b><div class="combo" id="capCombo"></div>
+  <i id="capHint">Hold Ctrl, Alt or Win/Cmd and press a key (F keys work on their own). Esc to cancel.</i></div></div>
+<div id="toast"></div>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -105,7 +139,8 @@ const single = SINGLE !== "" ? +SINGLE : null;      // one broken-out key
 let cols = {{COLS}}, rows = {{ROWS}}, keys = [], data = [], serverUp = false, companion = "connecting";
 const applied = {};      // what the window was last set to (float, see-through)
 let style = {showing: true, click_mode: "clickable", blocked: [], key_types: {}, breakout: [], float: true, movable: true,
-             transparency: 0, colour: "#000000", faders: {}};
+             transparency: 0, colour: "#000000", faders: {}, rotary: {}, hotkeys: {}};
+const STEP = 10, MOVE = 8;           // rotary: px of drag per click (default), and how far before a touch is a turn
 document.body.classList.toggle("win", WIN);
 document.body.classList.toggle("single", single !== null);
 const showHead = WIN || single !== null || q.get("head") !== "0";
@@ -185,6 +220,7 @@ function applyStyle() {
     el.classList.toggle("strip", t === "strip");
     el.classList.toggle("rotary", t === "rotary");
     el.classList.toggle("fader", t === "fader");
+    el.classList.toggle("sticky", t === "sticky");
     el.classList.toggle("out", out);
     el.classList.toggle("off", !clickable(i));
     if (t === "fader" && !el.querySelector(".slot")) {
@@ -211,7 +247,8 @@ function paint(k) {
   data[k.i] = k;
   const el = keys[k.i];
   if (!el) return;
-  el.title = where(k.i);
+  el.title = where(k.i) + (style.hotkeys[String(k.i)] ? ` · hotkey ${keyLabel(style.hotkeys[String(k.i)])}` : "");
+  el.classList.toggle("latched", !!k.latched);
   const img = el.querySelector("img"), span = el.querySelector("span");
   if (k.image) { if (img.src !== k.image) img.src = k.image; img.style.display = ""; span.textContent = ""; }
   else { img.removeAttribute("src"); img.style.display = "none";
@@ -255,56 +292,69 @@ function post(path, body) {
   return fetch(API + path, {method: "POST", headers: {"Content-Type": "application/json"},
                body: JSON.stringify(body)}).catch(() => {});
 }
-const held = new Map();   // pointerId -> {i, kind, x, y, moved, start}
+const held = new Map();   // pointerId -> {i, kind, x, y, moved, pressed}
+function rot(i) { return Object.assign({step: STEP, vertical: false}, style.rotary[String(i)] || {}); }
 function release(id) {
   const h = held.get(id);
   if (!h) return;
   held.delete(id);
   keys[h.i] && keys[h.i].classList.remove("down");
   if (h.kind === "fader") { sendFader(h.i, true); return; }
-  if (h.kind === "rotary" && h.moved) return;          // a turn, not a push
+  if (h.kind === "rotary") {
+    // as ScreenDeck: it never moved far enough to be a turn, so it's a push (down, then up)
+    if (!h.moved) post("/press", {key: h.i, pressed: true}).then(() => post("/press", {key: h.i, pressed: false}));
+    return;
+  }
   if (h.pressed) post("/press", {key: h.i, pressed: false});
 }
 deck.addEventListener("pointerdown", e => {
+  if (e.button === 2) return;                          // right-click: the menu
   const el = e.target.closest(".key");
   if (!el || el.classList.contains("out")) return;
-  const i = +el.dataset.i;
-  if (!clickable(i)) return;
+  const i = +el.dataset.i, k = kind(i);
+  if (k === "gap" || !clickable(i)) return;
   e.preventDefault();
-  const k = kind(i);
-  const h = {i, kind: k, x: e.clientX, y: e.clientY, moved: false, pressed: false, acc: 0};
+  closeMenu();
+  const h = {i, kind: k, x: e.clientX, y: e.clientY, moved: false, pressed: false, done: 0};
   held.set(e.pointerId, h);
   try { el.setPointerCapture(e.pointerId); } catch (_) {}
   if (navigator.vibrate) navigator.vibrate(8);
   if (k === "fader") { faderAt(h, el, e.clientY); return; }
   el.classList.add("down");
-  if (k === "button") { h.pressed = true; post("/press", {key: i, pressed: true}); }
-  else h.timer = setTimeout(() => { if (!h.moved) { h.pressed = true; post("/press", {key: i, pressed: true}); } }, 180);
+  if (k !== "rotary") { h.pressed = true; post("/press", {key: i, pressed: true}); }   // buttons, strips, sticky
 });
 deck.addEventListener("pointermove", e => {
   const h = held.get(e.pointerId);
   if (!h) return;
   const el = keys[h.i];
   if (h.kind === "fader") return faderAt(h, el, e.clientY);
-  if (h.kind === "rotary") {
-    const dx = e.clientX - h.x;
-    const step = Math.max(6, el.offsetWidth / 8);
-    const steps = Math.trunc((dx - h.acc) / step);
-    if (steps && !h.pressed) {
-      h.moved = true; h.acc += steps * step;
-      el.classList.remove("down");
-      turn(h.i, steps);
-    }
+  if (h.kind !== "rotary") return;
+  const o = rot(h.i);
+  // along the drag direction: right, or up, turns clockwise
+  const along = o.vertical ? h.y - e.clientY : e.clientX - h.x;
+  if (!h.moved) {
+    if (Math.hypot(e.clientX - h.x, e.clientY - h.y) < MOVE) return;
+    h.moved = true; h.from = along;                   // now it's a turn, from here
+    el.classList.remove("down");
   }
+  const steps = Math.trunc((along - h.from) / o.step) - h.done;
+  if (steps) { h.done += steps; turn(h.i, steps); }
 });
 for (const t of ["pointerup", "pointercancel", "lostpointercapture"])
   deck.addEventListener(t, e => release(e.pointerId));
+const wheelAcc = {};
 deck.addEventListener("wheel", e => {
   const el = e.target.closest(".key");
   if (!el) return;
   const i = +el.dataset.i;
   if (!clickable(i)) return;
-  if (kind(i) === "rotary") { e.preventDefault(); turn(i, e.deltaY < 0 ? 1 : -1); }
+  if (kind(i) === "rotary") {
+    e.preventDefault();
+    // a mouse wheel notch is one click; a trackpad's small scrolls add up to one
+    const d = e.deltaMode ? e.deltaY * 40 : e.deltaY;
+    wheelAcc[i] = (wheelAcc[i] || 0) + d;
+    if (Math.abs(wheelAcc[i]) >= 40) { turn(i, wheelAcc[i] < 0 ? 1 : -1); wheelAcc[i] = 0; }
+  }
   else if (kind(i) === "fader") {
     e.preventDefault();
     const v = Math.max(0, Math.min(127, (style.faders[String(i)] || 0) + (e.deltaY < 0 ? 2 : -2)));
@@ -336,7 +386,7 @@ function sendFader(i, now) {
   if (!faderTimers[i]) faderTimers[i] = setTimeout(go, 40);
 }
 addEventListener("blur", () => [...held.keys()].forEach(release));
-addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("contextmenu", e => { e.preventDefault(); if (WIN) openMenu(e); });
 addEventListener("resize", fit);
 
 // ---- RebelDeck's own window: float, hide, resize locked to the deck's shape ----
@@ -394,6 +444,143 @@ for (const t of ["pointerup", "pointercancel"])
   $("grip").addEventListener(t, () => { if (grip && api()) api().save_geometry(); grip = null; });
 window.addEventListener("pywebviewready", () => { setTimeout(snapToShape, 50); });
 
+// ---- right-click menu on a key (RebelDeck's own windows), as ScreenDeck's ----
+const menu = $("menu");
+const PLAT = /Mac/.test(navigator.platform) ? "mac" : /Win/.test(navigator.platform) ? "windows" : "linux";
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function keyLabel(hk) { return String(hk).replace("Super", PLAT === "mac" ? "Cmd" : PLAT === "windows" ? "Win" : "Super").replace(/\+/g, " + "); }
+function toast(t) {
+  const el = $("toast"); el.textContent = t; el.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = "none", 3000);
+}
+async function save(body, msg) {
+  try {
+    const r = await fetch(API, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    if (msg) toast(msg);
+    return true;
+  } catch (e) { toast("Didn't save: " + e.message); return false; }
+}
+const TYPES = [["button", "Button"], ["sticky", "Sticky: click on, click off"], ["rotary", "Rotary"],
+               ["fader", "Fader"], ["strip", "Strip (wide and short)"], ["gap", "Gap (empty space)"]];
+let menuKey = null, menuAt = [0, 0], menuProblem = null;
+function closeMenu() { menu.classList.remove("on"); menuKey = null; }
+function drawMenu() {
+  const i = menuKey, t = kind(i), k = String(i), hk = style.hotkeys[k], sep = "<div class='sep'></div>";
+  let h = `<div class="t">${esc(where(i))}</div><div class="h">Make it</div>`;
+  for (const [v, label] of TYPES) h += `<div class="i${t === v ? " on" : ""}" data-type="${v}">${label}</div>`;
+  if (t === "rotary") {
+    const o = rot(i);
+    h += sep + `<div class="h">Rotary</div>
+      <div class="row" title="How far a drag goes for each click of the dial">Step <button data-step="-2">−</button><input id="mstep" type="number" min="2" max="200" value="${o.step}"><button data-step="2">+</button> px</div>
+      <div class="i${o.vertical ? "" : " on"}" data-drag="h">Drag side to side</div>
+      <div class="i${o.vertical ? " on" : ""}" data-drag="v">Drag up and down</div>`;
+  }
+  if (t === "sticky" && data[i] && data[i].latched) h += `<div class="i" data-act="letgo">Let go (it's held down)</div>`;
+  if (t !== "gap" && t !== "fader") {
+    h += sep + `<div class="h">Hotkey${hk ? ": " + esc(keyLabel(hk)) : ""}</div>
+      <div class="i" data-act="hotkey">${hk ? "Change hotkey…" : "Assign hotkey…"}</div>` +
+      (hk ? `<div class="i" data-act="nohotkey">Clear hotkey</div>` : "") +
+      (hk && menuProblem ? `<div class="warn">⚠ Not working: ${esc(menuProblem)}</div>` : "");
+  }
+  const out = style.breakout.includes(i);
+  h += sep + (single !== null ? `<div class="i" data-act="back">Back into the deck</div>`
+                              : `<div class="i" data-act="out">${out ? "Back into the deck" : "Break out into its own window"}</div>`);
+  menu.innerHTML = h;
+  menu.classList.add("on");
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(menuAt[0], innerWidth - r.width - 4)) + "px";
+  menu.style.top = Math.max(4, Math.min(menuAt[1], innerHeight - r.height - 4)) + "px";
+}
+async function openMenu(e) {
+  const el = e.target.closest(".key");
+  if (!el || capturing !== null) { closeMenu(); return; }
+  const i = +el.dataset.i;
+  menuKey = i; menuAt = [e.clientX, e.clientY]; menuProblem = null;
+  drawMenu();
+  try {   // why its hotkey isn't working, if it isn't
+    const me = (await (await fetch("/api/decks")).json()).find(d => d.id === DECK);
+    const p = me && me.hotkey_problems && me.hotkey_problems[String(i)];
+    if (p && menuKey === i) { menuProblem = p; drawMenu(); }
+  } catch (_) {}
+}
+let stepT = null;
+function saveStep(i, v) {
+  v = Math.max(2, Math.min(200, Math.round(+v) || STEP));
+  style.rotary = Object.assign({}, style.rotary, {[String(i)]: Object.assign(rot(i), {step: v})});
+  const inp = $("mstep"); if (inp) inp.value = v;
+  clearTimeout(stepT); stepT = setTimeout(() => save({rotary: style.rotary}), 400);
+}
+menu.addEventListener("click", e => {
+  const x = e.target.closest("[data-type],[data-drag],[data-act],[data-step]");
+  if (!x || menuKey === null) return;
+  const i = menuKey, k = String(i), a = x.dataset.act;
+  if (x.dataset.type) {
+    const kt = Object.assign({}, style.key_types);
+    if (x.dataset.type === "button") delete kt[k]; else kt[k] = x.dataset.type;
+    closeMenu();
+    if (x.dataset.type !== kind(i)) save({key_types: kt}, "Saved. Companion re-registers the deck for the new layout.");
+  } else if (x.dataset.drag) {
+    style.rotary = Object.assign({}, style.rotary, {[k]: Object.assign(rot(i), {vertical: x.dataset.drag === "v"})});
+    drawMenu(); save({rotary: style.rotary});
+  } else if (x.dataset.step) {
+    saveStep(i, rot(i).step + +x.dataset.step);
+  } else if (a === "letgo") { closeMenu(); post("/let-go", {key: i}); }
+  else if (a === "hotkey") { closeMenu(); capture(i); }
+  else if (a === "nohotkey") {
+    const hks = Object.assign({}, style.hotkeys); delete hks[k];
+    closeMenu(); save({hotkeys: hks}, "Hotkey cleared.");
+  } else if (a === "out" || a === "back") {
+    const out = new Set(style.breakout);
+    out.has(i) ? out.delete(i) : out.add(i);
+    closeMenu(); save({breakout: [...out]});
+  }
+});
+menu.addEventListener("change", e => { if (e.target.id === "mstep" && menuKey !== null) saveStep(menuKey, e.target.value); });
+menu.addEventListener("pointerdown", e => e.stopPropagation());
+document.addEventListener("pointerdown", e => { if (!menu.contains(e.target)) closeMenu(); }, true);
+addEventListener("blur", closeMenu);
+
+// ---- assigning a hotkey: press it ----
+let capturing = null;
+const NAMED = {ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Space: "Space", Home: "Home",
+               End: "End", PageUp: "PageUp", PageDown: "PageDown", Insert: "Insert", Delete: "Delete"};
+function codeKey(c) {
+  let m;
+  if ((m = /^Key([A-Z])$/.exec(c))) return m[1];
+  if ((m = /^Digit(\d)$/.exec(c))) return m[1];
+  if ((m = /^Numpad(\d)$/.exec(c))) return "Num" + m[1];
+  if (/^F([1-9]|1\d|2[0-4])$/.test(c)) return c;
+  return NAMED[c] || null;
+}
+const HINT = "Hold Ctrl, Alt or " + (PLAT === "mac" ? "Cmd" : "Win") + " and press a key (F keys work on their own). Esc to cancel.";
+function capture(i) {
+  capturing = i;
+  $("capTitle").textContent = "Hotkey for " + where(i);
+  $("capCombo").textContent = style.hotkeys[String(i)] ? keyLabel(style.hotkeys[String(i)]) : "";
+  $("capHint").textContent = HINT; $("capHint").className = "";
+  $("cap").classList.add("on");
+}
+function endCapture() { capturing = null; $("cap").classList.remove("on"); }
+$("cap").addEventListener("pointerdown", e => { if (e.target === $("cap")) endCapture(); });
+addEventListener("keydown", async e => {
+  if (capturing === null) { if (e.key === "Escape") closeMenu(); return; }
+  e.preventDefault(); e.stopPropagation();
+  if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return endCapture();
+  const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
+  const modOnly = ["Control", "Alt", "Shift", "Meta", "OS", "AltGraph"].includes(e.key);
+  const key = modOnly ? null : codeKey(e.code);
+  $("capCombo").textContent = keyLabel([...mods, ...(key ? [key] : [])].join("+"));
+  const hint = (t, bad) => { $("capHint").textContent = t; $("capHint").className = bad ? "err" : ""; };
+  if (modOnly) return;
+  if (!key) return hint("That key can't be a hotkey: letters, numbers, F keys, the number pad, arrows, Space, Home/End, Page Up/Down, Insert and Delete can.", true);
+  if (!mods.some(m => m !== "Shift") && !/^F\d+$/.test(key)) return hint("Add Ctrl, Alt or " + (PLAT === "mac" ? "Cmd" : "Win") + " too, or it'd go off while you type. (F keys work on their own.)", true);
+  const hk = [...mods, key].join("+"), i = capturing;
+  if (await save({hotkeys: Object.assign({}, style.hotkeys, {[String(i)]: hk})})) {
+    endCapture(); toast(`${keyLabel(hk)} now presses ${where(i)}`);
+  } else hint("Try another: " + ($("toast").textContent.replace(/^Didn't save: /, "")), true);
+}, true);
+
 // ---- live updates ----
 function identify() {
   $("identName").textContent = style.name || document.title;
@@ -415,7 +602,16 @@ function connect() {
   es.addEventListener("identify", identify);
   es.addEventListener("reload", () => { es.close(); connect(); });
   es.onerror = () => { serverUp = false; showStatus(); };
-  es.onopen = () => { serverUp = true; showStatus(); };
+  es.onopen = () => { serverUp = true; showStatus(); checkBuild(); };
+}
+// after an update, RebelDeck comes back as a new build: load the new page with it
+let loadedBuild = null;
+async function checkBuild() {
+  try {
+    const b = (await (await fetch("/api/info")).json()).build;
+    if (loadedBuild && b && b !== loadedBuild) location.reload();
+    loadedBuild = loadedBuild || b;
+  } catch (_) {}
 }
 
 // keep the screen awake while the deck is open, where the browser allows it

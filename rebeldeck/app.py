@@ -8,6 +8,7 @@ Three layers, like Companion Sync:
   RebelDeck                 tray icon, deck windows
   RebelDeck --headless      no tray or windows (the Pi service, servers)
   RebelDeck --popup         the pop-out on its own (started by the tray)
+  RebelDeck --hotkey <deck> <key>   press a key (the Pi desktop's keybinds run this)
 """
 import json
 import logging
@@ -462,12 +463,12 @@ class App:
         menu = pystray.Menu(
             pystray.MenuItem(status_text, None, enabled=False),
             pystray.MenuItem("Show/hide pop-out", lambda *_: self.toggle_popup(), default=True),
-            pystray.MenuItem("Open web GUI", lambda *_: self.open_gui()),
             pystray.MenuItem("Visible decks", pystray.Menu(lambda: deck_items())),
             pystray.MenuItem("Identify a deck", pystray.Menu(lambda: identify_items())),
             pystray.MenuItem(update_text, do_update),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f"Quit {APP}", lambda *_: self.quit()),
+            pystray.MenuItem("Open web GUI", lambda *_: self.open_gui()),     # the bottom item (Nige, 8 Nov)
         )
         if LINUX:
             # the Pi's taskbar can't draw pystray's temp-file icons: give it named PNGs
@@ -548,6 +549,11 @@ class App:
         if self.m.cfg.get("web_network", True):
             LocalName().start()
         self.m.start()
+        from .hotkeys import Hotkeys
+        self.hotkeys = Hotkeys(self.m, lambda deck_id, key: self_command("--hotkey", deck_id, str(key)),
+                               headless=self.headless)
+        self.hotkeys.start()
+        log.info("hotkeys: %s", self.hotkeys.backend.name)
         log.info("decks for phones and tablets: %s", self.lan_url() or "(off)")
         if self.windows:
             self.m.on_windows = self.windows.set
@@ -601,7 +607,23 @@ def webkit_safe_mode():
         os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
 
 
+def hotkey_press(deck, key):
+    """--hotkey: ask the running RebelDeck to press a key, then go."""
+    try:
+        port = settings.int_setting(settings._read().get("web_port"), 1024, 65535, 8091)
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/decks/{urllib.request.quote(deck)}/tap",
+                                     data=json.dumps({"key": int(key)}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=3).read()
+        return 0
+    except Exception as e:
+        print(f"RebelDeck --hotkey: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv):
+    if argv[:1] == ["--hotkey"] and len(argv) >= 3:
+        return hotkey_press(argv[1], argv[2])
     webkit_safe_mode()                  # before any window; deck windows inherit it
     if "--deck-window" in argv:
         # its own quiet log: several processes sharing one rotating log file trip over each other on Windows

@@ -32,11 +32,15 @@ service for phones and tablets.
 - **Its own deck windows**: frameless, float on top (switch on the window's header), drag to move, corner grip to
   resize (locked to the deck's shape), remembers where they were (Reset puts them back), Locked switch, colour and transparency.
 - **Button editor**: Clickable / Unclickable / Hybrid (pick which buttons work); paint keys as **buttons**,
-  **rotaries** (drag or scroll to turn, tap to push) or **faders** (Intech Grid style: turn steps plus a 0-127 surface
+  **sticky** buttons (click on, click off), **rotaries** (drag or scroll to turn, tap to push; each with its own step
+  size and drag direction) or **faders** (Intech Grid style: turn steps plus a 0-127 surface
   variable `fader_N`; Companion moves them with `fader_N_set`); **break out** single keys into their own little
   floating windows.
 - **Strip buttons** (wide, short, like a Stream Deck + touch strip segment; any button can be one) and **gaps**, using Companion's free layout
   (Companion 4.2+; wide pictures on Companion 5+). Presets for the **+** and **+ XL** match how Companion lays them out.
+- **Hotkeys**: a keyboard shortcut per key that presses it from anywhere on the computer (Windows, Mac, and the Pi's
+  labwc desktop, where RebelDeck keeps keybinds in `~/.config/labwc/rc.xml`).
+- **Right-click a key** in a deck window to change its type, a rotary's step and drag, its hotkey, or break it out.
 - **Several Companions**: a list of servers with a default; any deck can use its own. **Find Companions** scans this
   computer and the local network for Companion's Satellite port.
 - **Short addresses**: `/1`, `/2`… open decks by their number on the Decks page.

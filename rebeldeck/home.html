@@ -36,6 +36,10 @@ a.tile:active,a.tile:hover{background:#1b1230;border-color:var(--purple)}
 .n{position:absolute;top:8px;right:12px;font:800 13px var(--head);color:var(--purple)}
 a.tile{position:relative}
 .empty{color:var(--dim)}
+.pop{position:absolute;top:6px;left:8px;width:26px;height:22px;display:grid;place-items:center;border:1px solid var(--edge);
+  background:#1b1230;color:var(--dim);font-size:14px;cursor:pointer;opacity:0;transition:opacity .1s}
+a.tile:hover .pop,.pop:focus{opacity:1}.pop:hover{color:var(--lav);border-color:var(--purple)}
+@media (pointer:coarse){.pop{display:none}}
 footer{margin-top:28px;color:var(--dim);font-size:13px;max-width:900px}
 footer a{color:var(--purple)}
 </style>
@@ -45,13 +49,16 @@ footer a{color:var(--purple)}
 <p class="sub">Pick a deck. Tap away. Companion does the rest.</p>
 <div id="list"><div class="empty">Rummaging for decks…</div></div>
 <footer>On an iPhone or iPad: open a deck, then <b>Share → Add to Home Screen</b> and it opens full-screen like a proper app.
+  On a computer, <b>⧉</b> on a deck opens it in a window of its own, without tabs or toolbars.
   · <a href="/gui">Settings</a></footer>
 <script>
 "use strict";
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 function tile(base, d) {
   const c = Math.min(d.columns, 10), r = Math.min(d.rows, 6);
-  return `<a class="tile" href="${esc(base)}/deck/${esc(d.slug)}">${d.n ? `<span class="n" title="Short address: /${d.n}">/${d.n}</span>` : ""}
+  return `<a class="tile" href="${esc(base)}/deck/${esc(d.slug)}">
+    <span class="pop" role="button" tabindex="0" data-pop="${esc(base)}/deck/${esc(d.slug)}" data-c="${d.columns}" data-r="${d.rows}"
+      title="Open in a window of its own: no tabs or toolbar (some browsers keep a thin address strip)">⧉</span>${d.n ? `<span class="n" title="Short address: /${d.n}">/${d.n}</span>` : ""}
     <div class="mini" style="grid-template-columns:repeat(${c},1fr);width:${Math.min(100, c * 14)}%">${"<i></i>".repeat(c * r)}</div>
     <div class="foot"><span class="dot ${esc(d.status)}"></span><span class="name">${esc(d.name)}</span>
       <span class="size">${d.columns}×${d.rows}</span></div></a>`;
@@ -69,8 +76,26 @@ async function load() {
     document.getElementById("list").innerHTML = "<div class='empty'>Can't reach RebelDeck. Is it running?</div>";
   }
 }
-load();
-setInterval(load, 5000);
+// ⧉: the deck in a browser window of its own, sized to the deck
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-pop]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const k = Math.max(48, Math.min(110, Math.floor(Math.min((screen.availWidth * .8) / b.dataset.c, (screen.availHeight * .7) / b.dataset.r))));
+  const w = b.dataset.c * (k + 6) + 16, h = b.dataset.r * (k + 6) + 16 + 26;
+  window.open(b.dataset.pop, "rebeldeck-" + b.dataset.pop.split("/").pop(), `popup=yes,width=${w},height=${h}`);
+});
+// after an update RebelDeck comes back as a new build: load the new page with it
+let build = null;
+async function checkBuild() {
+  try {
+    const b = (await (await fetch("/api/info")).json()).build;
+    if (build && b && b !== build) location.reload();
+    build = build || b;
+  } catch (_) {}
+}
+load(); checkBuild();
+setInterval(() => { load(); checkBuild(); }, 5000);
 </script>
 </body>
 </html>

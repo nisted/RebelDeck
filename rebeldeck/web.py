@@ -26,6 +26,8 @@ API (JSON)
   POST /api/decks/<deck>/press   {"key": n, "pressed": true|false}
   POST /api/decks/<deck>/rotate  {"key": n, "steps": ±n}
   POST /api/decks/<deck>/fader   {"key": n, "value": 0-127}
+  POST /api/decks/<deck>/let-go  {"key": n}: a held sticky key lets go
+  POST /api/decks/<deck>/tap     {"key": n}: press and release (hotkeys; this computer only)
   POST /api/decks/<deck>/identify   flash its name wherever it's open
   GET  /api/qr.png               QR code of the pick-a-deck page
   GET  /<n>                      short address: deck n (in the Decks page's order)
@@ -115,7 +117,7 @@ class Hub:
             self.clients.pop(q, None)
 
 
-DECK_URL = re.compile(r"^/(?:api/)?decks?/([0-9a-z-]+)(/[a-z.]+)?$")
+DECK_URL = re.compile(r"^/(?:api/)?decks?/([0-9a-z-]+)(/[a-z.-]+)?$")
 SERVER_URL = re.compile(r"^/api/servers/([0-9a-zA-Z_-]+)$")
 PROFILE_URL = re.compile(r"^/api/profiles/([^/]+)(/load)?$")
 
@@ -324,7 +326,8 @@ def make_server(manager, app=None, rigs=None):
                     "lan": ip_base(self) + "/" if on else None,            # the IP address: the backup
                     "local_name": f"http://{hostname().lower()}.local:{port}/" if on else None,
                     "link_address": manager.cfg.get("link_address", "local"),
-                    "here": f"http://127.0.0.1:{port}/"}
+                    "here": f"http://127.0.0.1:{port}/",
+                    "build": app.label() if app else __version__}     # pages reload themselves when this changes
 
         def events(self, deck_id):
             self.send_response(200)
@@ -409,6 +412,8 @@ def make_server(manager, app=None, rigs=None):
                 deck.press(key, bool(b["pressed"]))
             elif what == "/rotate":
                 deck.rotate(key, int(b["steps"]))
+            elif what == "/let-go":
+                deck.let_go(key)
             else:
                 deck.fader(key, int(b["value"]))
             return self.send(200, {"ok": True})
@@ -417,8 +422,15 @@ def make_server(manager, app=None, rigs=None):
             path = urllib.parse.urlsplit(self.path).path.rstrip("/")
             m = DECK_URL.match(path)
             try:
-                if m and m.group(2) in ("/press", "/rotate", "/fader"):
+                if m and m.group(2) in ("/press", "/rotate", "/fader", "/let-go"):
                     return self.deck_input(m.group(1), m.group(2))
+                if m and m.group(2) == "/tap":
+                    # a hotkey (the Pi's keybinds run "RebelDeck --hotkey", which comes here):
+                    # this computer only; hotkeys work whatever the deck's click mode
+                    if not self.local():
+                        return self.send(403, {"error": "hotkeys come from this computer only"})
+                    manager.tap(m.group(1), int(self.body()["key"]))
+                    return self.send(200, {"ok": True})
                 if m and m.group(2) == "/identify":
                     manager.identify(m.group(1))
                     if app:

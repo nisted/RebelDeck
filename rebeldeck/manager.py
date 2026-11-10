@@ -31,7 +31,7 @@ RESTART_APP = ("web_port", "web_network", "discovery_port")
 # deck settings anyone with the GUI may change, and which of them need the deck
 # registering with Companion again
 DECK_KEYS = ("name", "columns", "rows", "showing", "own_server", "server", "click_mode", "blocked",
-             "key_types", "strip_ratio", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
+             "key_types", "rotary", "hotkeys", "strip_ratio", "breakout", "breakout_windows", "float", "movable", "transparency", "colour", "window")
 REREGISTER = ("name", "columns", "rows", "key_types", "strip_ratio", "picture_px")
 
 PICTURE_STEPS = (72, 96, 120, 144, 196, 240, 288)
@@ -49,6 +49,8 @@ class Manager:
         self.lock = threading.RLock()
         self.on_windows = None          # set by the app: fn(deck_id, show: bool)
         self.restart_needed = False
+        self.hotkey_problems = {}       # deck id -> {"n": why its hotkey isn't working}, from hotkeys.py
+        self.hotkeys_info = {"backend": "none", "note": ""}
 
     # ---- lifecycle -----------------------------------------------------
     def start(self):
@@ -119,7 +121,8 @@ class Manager:
             out.append({**d, "n": n, "locations": live.locations() if live else [],
                         "status": live.status if live else "stopped",
                         "companion_at": f"{s['host']}:{s['port']}", "server_name": s["name"],
-                        "server_used": s["id"], "picture_px": self.picture_px(d)})
+                        "server_used": s["id"], "picture_px": self.picture_px(d),
+                        "hotkey_problems": self.hotkey_problems.get(d["id"], {})})
         return out
 
     def status(self):
@@ -139,7 +142,8 @@ class Manager:
         default = self.server(self.cfg["default_server"]) or self.cfg["servers"][0]
         return {"status": overall, "companion": companion,
                 "companion_at": f"{default['host']}:{default['port']}",
-                "decks": decks, "servers": self.server_list(), "default_server": self.cfg["default_server"]}
+                "decks": decks, "servers": self.server_list(), "default_server": self.cfg["default_server"],
+                "hotkeys": self.hotkeys_info}
 
     def server_list(self):
         out = []
@@ -166,6 +170,34 @@ class Manager:
         s = settings.slug(name)
         if any(d["slug"] == s and d["id"] != deck_id for d in self.cfg["decks"]):
             raise NameInUse(f'there\'s already a deck called "{name}" (or near enough)')
+
+    def _check_hotkeys(self, hotkeys, deck_id):
+        """A hotkey can press only one key, on any deck."""
+        from .hotkeys import normalise
+        if not isinstance(hotkeys, dict):
+            raise ValueError("hotkeys should be {key number: shortcut}")
+        mine = {}
+        for k, v in hotkeys.items():
+            n = normalise(v)
+            if v and not n:
+                raise ValueError(f'"{v}" can\'t be a hotkey: it needs Ctrl, Alt or Win/Cmd (or an F key) and one key')
+            if n in mine.values():
+                raise ValueError(f"{n} already presses another button on this deck")
+            mine[k] = n
+        for d in self.cfg["decks"]:
+            if d["id"] == deck_id:
+                continue
+            for k, v in d.get("hotkeys", {}).items():
+                if v in mine.values():
+                    raise ValueError(f'{v} already presses a key on {d["name"]}')
+
+    def tap(self, ref, key):
+        """Press and let go (a hotkey). Sticky keys toggle."""
+        deck = self.deck(ref)
+        if deck is None:
+            raise KeyError(ref)
+        deck.press(int(key), True)
+        threading.Timer(0.1, deck.press, (int(key), False)).start()
 
     def add_deck(self, name=None, columns=None, rows=None):
         with self.lock:
@@ -195,6 +227,8 @@ class Manager:
             ch = {k: v for k, v in changes.items() if k in DECK_KEYS}
             if "name" in ch:
                 self._check_name(str(ch["name"]).strip() or "RebelDeck", old["id"])
+            if "hotkeys" in ch:
+                self._check_hotkeys(ch["hotkeys"], old["id"])
             if "server" in ch and ch["server"] and not self.server(ch["server"]):
                 raise ValueError("no such Companion server")
             if ("columns" in ch or "rows" in ch) and "window" not in ch:
