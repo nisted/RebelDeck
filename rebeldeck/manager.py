@@ -381,7 +381,7 @@ class Manager:
         self._emit("profiles", None, None)
 
     def replace_decks(self, decks, keep_showing=True):
-        """Swap the whole set of decks (a profile, or Companion Sync bringing
+        """Swap the whole set of decks (a profile, or Rebel Sync bringing
         another rig's). Decks keep their ids, so Companion keeps their setup."""
         with self.lock:
             old_ids = {d["id"] for d in self.cfg["decks"]}
@@ -407,5 +407,5 @@ class Manager:
         self._emit("decks", None, None)
 
     def apply_synced_decks(self, decks):
-        """Deck layouts from another rig, via Companion Sync."""
+        """Deck layouts from another rig, via Rebel Sync."""
         self.replace_decks(decks, keep_showing=True)

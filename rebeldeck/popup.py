@@ -1,4 +1,4 @@
-"""The pop-out: the quick stuff, built like Companion Sync's pop-up.
+"""The pop-out: the quick stuff, built like Rebel Sync's pop-up.
 
 A small window of its own (tkinter) with no title bar: drag it from anywhere
 that isn't a control; Hide or Esc closes it. It talks to RebelDeck through
@@ -33,7 +33,7 @@ POS_FILE = os.path.join(settings.DIR, "popup-position.json")
 
 
 def _scale(cfg):
-    """Same sizing as Companion Sync's: a bit bigger than the design's pixels
+    """Same sizing as Rebel Sync's: a bit bigger than the design's pixels
     (Tk's fonts come out smallest on the Mac), times popup_size %."""
     base = 1.45 if sys.platform == "darwin" else 1.2
     try:

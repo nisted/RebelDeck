@@ -19,7 +19,7 @@ API (JSON)
   POST /api/decks                add a deck            {name, columns, rows}
   PUT  /api/decks/<deck>         change a deck         (any deck setting)
   DELETE /api/decks/<deck>       remove a deck
-  POST /api/decks/sync           decks from another rig (Companion Sync, this computer only)
+  POST /api/decks/sync           decks from another rig (Rebel Sync, this computer only)
   GET  /api/decks/<deck>/state   every button
   GET  /api/decks/<deck>/events  live updates (server-sent events)
   GET  /api/decks/<deck>/qr.png  QR code of the deck's address
@@ -442,7 +442,7 @@ def make_server(manager, app=None, rigs=None):
                     b = self.body()
                     return self.send(200, manager.add_deck(b.get("name"), b.get("columns"), b.get("rows")))
                 if path == "/api/decks/sync":
-                    # deck layouts from another rig, via Companion Sync on this computer
+                    # deck layouts from another rig, via Rebel Sync on this computer
                     if not self.local():
                         return self.send(403, {"error": "only from this computer"})
                     decks = self.body().get("decks")

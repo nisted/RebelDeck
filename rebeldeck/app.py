@@ -1,6 +1,6 @@
 """RebelDeck: the app.
 
-Three layers, like Companion Sync:
+Three layers, like Rebel Sync:
   tray icon   the basics: status, pop-out, web GUI, decks, update, quit
   pop-out     Companion's address and showing/hiding the deck windows
   web GUI     everything else (http://127.0.0.1:8091/gui)

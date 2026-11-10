@@ -62,10 +62,10 @@ deck windows.
 
 **Update RebelDeck** in the tray menu or the web GUI's Update page downloads and installs the newest build.
 
-## With Companion Sync
+## With Rebel Sync (formerly Rebel Sync)
 
-If [Companion Sync](https://github.com/nisted/companion-sync) is on the same computer, its tray menu gets a
-RebelDeck item (decks, web GUI, updates). Turn on *Let my decks travel between rigs with Companion Sync* in Settings
+If [Rebel Sync](https://github.com/nisted/rebel-sync) is on the same computer, its tray menu gets a
+RebelDeck item (decks, web GUI, updates). Turn on *Let my decks travel between rigs with Rebel Sync* in Settings
 and deck layouts go with the Companion config on Save and come back on Take. Which windows are open stays each
 rig's own choice.
 
